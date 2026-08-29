@@ -35,5 +35,8 @@ class ServiceInDB(ServiceBase):
 
 
 class ServiceResponse(ServiceBase):
-    id: str
+    id: str = Field(..., alias="_id")
     salon_id: str
+
+    class Config:
+        populate_by_name = True

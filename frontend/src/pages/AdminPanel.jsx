@@ -28,8 +28,7 @@ export default function AdminPanel() {
 
   const handleStatusChange = async (salonId, newStatus, isVisible) => {
     try {
-      // This would need a dedicated admin API in real implementation
-      alert(`تغییر وضعیت آرایشگاه به: ${newStatus}`);
+      await salonApi.updateStatus(salonId, newStatus, isVisible);
       loadSalons();
     } catch (err) {
       alert('خطا در بروزرسانی');

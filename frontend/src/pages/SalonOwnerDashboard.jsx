@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { salonApi } from '../api/salons';
 import { bookingApi } from '../api/bookings';
 import { useAuthStore } from '../store/authStore';
-import { Plus, Settings, Users, Calendar, Chair, Scissors } from 'lucide-react';
+import { Plus, Settings, Users, Calendar } from 'lucide-react';
 
 export default function SalonOwnerDashboard() {
   const { user } = useAuthStore();

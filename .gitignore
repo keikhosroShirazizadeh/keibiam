@@ -22,6 +22,9 @@ npm-debug.log*
 # Uploads (runtime data, not source)
 uploads/
 
+# Local MongoDB data (dev-only, started manually outside Docker)
+.mongo-data/
+
 # OS / editor
 .DS_Store
 Thumbs.db

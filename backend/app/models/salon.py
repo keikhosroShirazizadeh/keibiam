@@ -45,6 +45,9 @@ class SalonInDB(SalonBase):
 
 
 class SalonResponse(SalonBase):
-    id: str
+    id: str = Field(..., alias="_id")
     owner_id: str
     created_at: datetime
+
+    class Config:
+        populate_by_name = True

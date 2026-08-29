@@ -33,7 +33,7 @@ class UserInDB(UserBase):
 
 
 class UserResponse(UserBase):
-    id: str
+    id: str = Field(..., alias="_id")
     created_at: datetime
 
     class Config:

@@ -19,7 +19,7 @@ class BookingBase(BaseModel):
     service_ids: List[str]
     booking_date: date
     start_time: time
-    end_time: time
+    end_time: Optional[time] = None
     status: BookingStatus = BookingStatus.PENDING
     notes: Optional[str] = None
     total_price: float = 0.0
@@ -40,8 +40,11 @@ class BookingInDB(BookingBase):
 
 
 class BookingResponse(BookingBase):
-    id: str
+    id: str = Field(..., alias="_id")
     customer_id: str
     stylist_id: Optional[str]
     chair_id: Optional[str]
     created_at: datetime
+
+    class Config:
+        populate_by_name = True

@@ -8,17 +8,19 @@ from datetime import datetime
 router = APIRouter(prefix="/services", tags=["Services"])
 
 
-@router.post("/")
+@router.post("/salon/{salon_id}")
 async def create_service(
+    salon_id: str,
     service: ServiceCreate,
     current_user: dict = Depends(require_owner)
 ):
-    salon = await db.salons.find_one({"_id": service.salon_id})
+    salon = await db.salons.find_one({"_id": salon_id})
     if not salon or salon["owner_id"] != str(current_user["_id"]):
         raise HTTPException(status_code=403, detail="Not your salon")
 
     service_dict = service.model_dump()
     service_dict["_id"] = str(ObjectId())
+    service_dict["salon_id"] = salon_id
     service_dict["created_at"] = datetime.utcnow()
 
     await db.services.insert_one(service_dict)

@@ -5,6 +5,7 @@ from jose import jwt
 from datetime import datetime, timedelta
 from app.database import db
 from app.config import settings
+from app.dependencies.auth import get_current_active_user
 from app.models.user import UserCreate, UserResponse, UserRole
 from bson import ObjectId
 import aiofiles

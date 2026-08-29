@@ -22,5 +22,8 @@ class ChairInDB(ChairBase):
 
 
 class ChairResponse(ChairBase):
-    id: str
+    id: str = Field(..., alias="_id")
     salon_id: str
+
+    class Config:
+        populate_by_name = True

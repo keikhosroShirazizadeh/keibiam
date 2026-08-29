@@ -45,7 +45,10 @@ class StylistInDB(StylistBase):
 
 
 class StylistResponse(StylistBase):
-    id: str
+    id: str = Field(..., alias="_id")
     user_id: str
     salon_ids: List[str]
     work_schedules: List[WorkSchedule]
+
+    class Config:
+        populate_by_name = True
