@@ -1,7 +1,9 @@
 # Project Handoff — Salon Booking System
 
-Status snapshot as of 2026-08-25. This document exists to bring a new
-contributor up to speed on what exists, what's missing, and where to start.
+Status snapshot as of 2026-08-29. This document exists to bring a new
+contributor up to speed on what exists and where to start. The app is now
+runnable end-to-end (register → create salon → admin approval → create
+service → book → confirm), verified live over HTTP.
 
 ## What this is
 
@@ -16,8 +18,7 @@ modes**:
   person.
 - **`stylist_based`** — customers book a specific stylist/hairdresser.
 
-This is modeled by `Salon.management_mode`
-(`backend/app/models/salon.py`).
+This is modeled by `Salon.management_mode` (`backend/app/models/salon.py`).
 
 ## Roles
 
@@ -38,86 +39,103 @@ dependencies in `backend/app/dependencies/auth.py`
 | `Service` | type enum (haircut/shave/manicure/pedicure/coloring/treatment/other), duration_minutes, price | belongs to one salon |
 | `Booking` | salon_id, service_ids, booking_date, start/end time, status, customer_id, optional stylist_id/chair_id | status workflow: `pending → confirmed/rejected`, `cancel_requested`, `cancelled_by_customer/stylist`, `completed` |
 
-## Backend routes that are actually implemented
+All `*Response` models alias their `id` field to Mongo's `_id` (with
+`populate_by_name = True`), so API responses come back with an `_id` key —
+that's the convention the frontend expects throughout.
 
-- `routers/auth.py` — `POST /auth/register`, `POST /auth/login` (JWT via
-  python-jose, bcrypt via passlib), `GET /auth/me`
-- `routers/services.py` — create/list-by-salon/update/soft-delete a service,
-  scoped to the salon's owner
+## Backend routes (`backend/app/routers/`)
 
-Everything else referenced by `main.py` (`admin`, `salons`, `stylists`,
-`chairs`, `bookings` routers) **does not exist yet** — see Known Gaps below.
+- `auth.py` — `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
+- `salons.py` — create (owner), list (public; `status` filter for
+  admin/owner views, defaults to active+visible), get one, update (owner)
+- `admin.py` — `PUT /admin/salons/{id}/status` — approve/reject/toggle
+  visibility (admin/super_admin)
+- `services.py` — `POST /services/salon/{salon_id}` (owner), list by salon
+  (public), update/soft-delete (owner)
+- `chairs.py` — `POST /chairs/salon/{salon_id}` (owner), list by salon
+  (public)
+- `stylists.py` — create (owner, linked to salon_ids), list by salon
+  (public)
+- `bookings.py` — create (customer; server computes `end_time` and
+  `total_price` from the selected services), `GET /bookings/me`,
+  `GET /bookings/salon/{salon_id}` (owner), `PUT /bookings/{id}/status`
 
-## Frontend pages (`frontend/src/pages/`)
+## Frontend (`frontend/src/`)
 
-- **Login / Register** — Persian UI, role picker on register (customer /
-  salon_owner / stylist)
-- **BookingPage** — 90-day date grid + 30-min time slot picker, notes field,
-  submits a booking
-- **SalonOwnerDashboard** — create a salon (choose chair-based vs
-  stylist-based), tabs for salons / stylists / bookings (stylists & bookings
-  tabs are placeholder text only)
-- **AdminPanel** — super-admin salon approval queue with status filters;
-  approve/reject buttons are currently stubbed (`alert()`, no real API call)
-- **Navbar / Layout** — role-aware navigation
+- `App.jsx` — router; `/`, `/login`, `/register`, `/salon/:salonId`,
+  `/salon/:salonId/book`, `/admin`, `/owner-dashboard`,
+  `/stylist-dashboard` (last three are role-gated via a `ProtectedRoute`
+  wrapper)
+- `store/authStore.js` — zustand store, persisted to localStorage:
+  `token`, `user`, `isAuthenticated`, `login()`, `logout()`, and
+  `isSuperAdmin()/isAdmin()/isSalonOwner()/isStylist()/isCustomer()` role
+  checks
+- `api/` — `axiosConfig.js` (injects the bearer token, logs out on 401),
+  `salons.js`, `bookings.js`, `services.js`
+- **Pages**: `Home` (salon browse grid), `SalonDetail` (service picker →
+  hands off to booking), `BookingPage` (date/time picker), `Login`,
+  `Register`, `AdminPanel` (salon approval queue), `SalonOwnerDashboard`
+  (create salons; stylists/bookings tabs still placeholder text),
+  `StylistDashboard` (placeholder)
 
-## Known gaps — the project does not currently run
+## Known remaining gaps
 
-This is an early-stage scaffold, not a working build. Anyone picking this up
-should fix these before anything else:
+Not blockers to running the app, but real gaps to close next:
 
-**Backend fails to start:**
-- `backend/app/main.py` imports routers `admin`, `salons`, `stylists`,
-  `chairs`, `bookings` — none of these files exist under
-  `backend/app/routers/` (only `auth.py` and `services.py` do). This is an
-  `ImportError` on boot.
-- `routers/auth.py`'s `GET /auth/me` uses `get_current_active_user` but
-  never imports it → `NameError`.
-
-**Frontend fails to build/run:**
-- No `package.json` in `frontend/` at all (the Dockerfile does
-  `COPY package.json .`, which will fail). `package-lock.json` present is
-  an empty shell.
-- `frontend/src/main.jsx` imports `./App`, but no `App.jsx` exists — there
-  is no router wiring any page to a URL yet.
-- `frontend/src/store/` and `frontend/src/api/` are **empty directories**.
-  Pages already reference (but don't yet define):
-  - `store/authStore.js` — expected shape based on usage: `isAuthenticated`,
-    `user`, `login(token, user)`, `logout()`, `isAdmin()`, `isSalonOwner()`,
-    `isStylist()`, `isCustomer()`, `isSuperAdmin()`
-  - `api/axiosConfig.js` — axios instance, base URL, auth header injection
-  - `api/salons.js` — `salonApi.getAll(params)`, `salonApi.create(data)`
-  - `api/bookings.js` — `bookingApi.create(data)`
-
-**Stubbed logic to revisit:**
-- Admin approve/reject only shows a JS `alert()`; no backend call wired up
-  (there's no admin router to call yet, see above).
-- Owner dashboard filters "my salons" client-side by `owner_id` instead of
-  using a dedicated endpoint/query param.
-
-## Suggested next steps, in order
-
-1. Add `frontend/package.json` (react, react-dom, react-router-dom, axios,
-   zustand, lucide-react, date-fns, tailwind toolchain) and `App.jsx` with
-   routing wired to `Layout` + the five existing pages.
-2. Implement `store/authStore.js` and the three `api/*.js` files to match
-   the interface pages already expect.
-3. Fix the missing import in `routers/auth.py`.
-4. Implement the missing backend routers — models already exist for all of
-   them, so each is mostly CRUD + role checks following the pattern already
-   established in `routers/services.py`:
-   - `admin.py` — salon approval/rejection, visibility toggle
-   - `salons.py` — CRUD + geo search + "my salons" for owners
-   - `stylists.py` — CRUD, work schedule management, salon linking
-   - `chairs.py` — CRUD scoped to a salon
-   - `bookings.py` — create/list/update status, conflict checking against
-     `WorkSchedule` and existing bookings
-5. Only after the above: revisit the stubbed AdminPanel/owner-dashboard UI
-   to call the real endpoints instead of `alert()`.
+- **No booking-conflict checking.** `Stylist.work_schedules` and existing
+  bookings aren't checked against a new booking's time slot — double
+  booking is currently possible.
+- **`SalonOwnerDashboard`'s "stylists" and "bookings" tabs** are placeholder
+  text only; no UI yet for adding stylists/chairs to a salon or viewing/
+  confirming bookings from the owner side (the backend endpoints exist:
+  `stylists.py`, `chairs.py`, `bookings.py`'s `GET /bookings/salon/{id}`
+  and `PUT /{id}/status` — just not wired into the dashboard UI).
+- **`StylistDashboard`** is a placeholder — no schedule management or
+  booking view for stylists yet.
+- **No chair-based booking UI** — `SalonDetail`/`BookingPage` don't yet let
+  a customer pick a chair for a `chair_based` salon (the `chair_id` field
+  exists on `Booking` and the `chairs.py` endpoints exist, just unused by
+  the UI).
+- **Owner dashboard's "my salons"** filters client-side by `owner_id`
+  rather than a dedicated query — works, but doesn't scale.
+- No image upload wired up yet, despite `UploadFile`/`aiofiles` deps and
+  `uploads/` directory scaffolding being present.
 
 ## Running locally
 
-`docker-compose up` is wired for mongo + backend + frontend, but will not
-succeed until the gaps above are closed (missing `package.json`, missing
-routers). Until then, treat `docker-compose.yml` as the intended shape of
-local dev, not a working command.
+### Requirements
+MongoDB reachable at `mongodb://localhost:27017` (or set `MONGODB_URL` via
+a `.env` file in `backend/`), Python 3.11+, Node 20+.
+
+```powershell
+# MongoDB (Windows service, needs an elevated PowerShell)
+Start-Service MongoDB
+# — or run mongod.exe manually with a custom --dbpath if you don't have
+#   admin rights / didn't install it as a service.
+
+# Backend
+cd backend
+dep\Scripts\activate      # or create a fresh venv: python -m venv venv
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+# → http://localhost:8000 (interactive docs at /docs)
+
+# Frontend
+cd frontend
+npm install
+npm run dev
+# → http://localhost:5173
+```
+
+`docker-compose up` also works now (mongo + backend + frontend all
+containerized) as an alternative to running each piece manually.
+
+### Smoke-testing the API directly
+
+```bash
+curl -X POST http://localhost:8000/auth/register -H "Content-Type: application/json" \
+  -d '{"email":"a@b.com","phone":"0912...","full_name":"...","password":"secret123","role":"salon_owner"}'
+```
+Note: `bcrypt` must stay pinned to `4.0.1` in `requirements.txt` — newer
+`bcrypt` releases break `passlib==1.7.4`'s hashing backend and make every
+register/login call fail with a 500.
