@@ -1,27 +1,19 @@
 from fastapi import APIRouter, HTTPException, status, UploadFile, File, Depends
 from fastapi.security import OAuth2PasswordRequestForm
-from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
 from app.database import db
 from app.config import settings
 from app.dependencies.auth import get_current_active_user
 from app.models.user import UserCreate, UserResponse, UserRole
+from app.utils.security import verify_password, get_password_hash
+from app.utils.transaction_logger import log_transaction
 from bson import ObjectId
 import aiofiles
 import os
 import uuid
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-def verify_password(plain, hashed):
-    return pwd_context.verify(plain, hashed)
-
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
 
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
@@ -44,6 +36,7 @@ async def register(user: UserCreate):
     user_dict["updated_at"] = datetime.utcnow()
 
     await db.users.insert_one(user_dict)
+    log_transaction("create", "users", user_dict["_id"], user_dict, actor_id=user_dict["_id"])
 
     token = create_access_token(
         {"sub": user_dict["_id"], "role": user_dict["role"]},

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.dependencies.auth import get_current_active_user, require_owner
 from app.database import db
 from app.models.service import ServiceCreate, ServiceResponse, ServiceType
+from app.utils.transaction_logger import log_transaction
 from bson import ObjectId
 from datetime import datetime
 
@@ -24,6 +25,7 @@ async def create_service(
     service_dict["created_at"] = datetime.utcnow()
 
     await db.services.insert_one(service_dict)
+    log_transaction("create", "services", service_dict["_id"], service_dict, actor_id=str(current_user["_id"]))
     return ServiceResponse(**service_dict)
 
 
@@ -48,6 +50,7 @@ async def update_service(
         raise HTTPException(status_code=403, detail="Not authorized")
 
     await db.services.update_one({"_id": service_id}, {"$set": update_data})
+    log_transaction("update", "services", service_id, update_data, actor_id=str(current_user["_id"]))
     return {"message": "Service updated"}
 
 
@@ -62,4 +65,5 @@ async def delete_service(service_id: str, current_user: dict = Depends(require_o
         raise HTTPException(status_code=403, detail="Not authorized")
 
     await db.services.update_one({"_id": service_id}, {"$set": {"is_active": False}})
+    log_transaction("delete", "services", service_id, {"is_active": False}, actor_id=str(current_user["_id"]))
     return {"message": "Service deactivated"}

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.dependencies.auth import require_owner
 from app.database import db
 from app.models.chair import ChairCreate, ChairResponse
+from app.utils.transaction_logger import log_transaction
 from bson import ObjectId
 from datetime import datetime
 
@@ -20,6 +21,7 @@ async def create_chair(salon_id: str, chair: ChairCreate, current_user: dict = D
     chair_dict["created_at"] = datetime.utcnow()
 
     await db.chairs.insert_one(chair_dict)
+    log_transaction("create", "chairs", chair_dict["_id"], chair_dict, actor_id=str(current_user["_id"]))
     return ChairResponse(**chair_dict)
 
 

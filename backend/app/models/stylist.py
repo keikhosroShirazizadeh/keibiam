@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime, time
 from typing import Optional, List, Dict
 from enum import Enum
@@ -34,6 +34,14 @@ class StylistBase(BaseModel):
 class StylistCreate(StylistBase):
     user_id: str
     salon_ids: List[str] = []
+
+
+class StylistAccountCreate(StylistBase):
+    """Owner-facing: creates the stylist's user account and profile together."""
+    full_name: str
+    email: EmailStr
+    phone: str
+    password: str = Field(..., min_length=6)
 
 
 class StylistInDB(StylistBase):

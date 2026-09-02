@@ -22,6 +22,9 @@ npm-debug.log*
 # Uploads (runtime data, not source)
 uploads/
 
+# Transaction log files (runtime data, not source)
+logs/
+
 # Local MongoDB data (dev-only, started manually outside Docker)
 .mongo-data/
 

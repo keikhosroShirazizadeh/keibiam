@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { salonApi } from '../api/salons';
 import { bookingApi } from '../api/bookings';
+import { stylistApi } from '../api/stylists';
 import { useAuthStore } from '../store/authStore';
 import { Plus, Settings, Users, Calendar } from 'lucide-react';
 
@@ -17,9 +18,33 @@ export default function SalonOwnerDashboard() {
     management_mode: 'chair_based',
   });
 
+  const [selectedSalonId, setSelectedSalonId] = useState('');
+  const [stylists, setStylists] = useState([]);
+  const [showAddStylistForm, setShowAddStylistForm] = useState(false);
+  const [stylistError, setStylistError] = useState('');
+  const [newStylist, setNewStylist] = useState({
+    full_name: '',
+    email: '',
+    phone: '',
+    password: '',
+    bio: '',
+  });
+
   useEffect(() => {
     loadSalons();
   }, []);
+
+  useEffect(() => {
+    if (!selectedSalonId && salons.length > 0) {
+      setSelectedSalonId(salons[0]._id);
+    }
+  }, [salons]);
+
+  useEffect(() => {
+    if (activeTab === 'stylists' && selectedSalonId) {
+      loadStylists(selectedSalonId);
+    }
+  }, [activeTab, selectedSalonId]);
 
   const loadSalons = async () => {
     try {
@@ -29,6 +54,28 @@ export default function SalonOwnerDashboard() {
       setSalons(mySalons);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const loadStylists = async (salonId) => {
+    try {
+      const res = await stylistApi.getBySalon(salonId);
+      setStylists(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCreateStylist = async (e) => {
+    e.preventDefault();
+    setStylistError('');
+    try {
+      await stylistApi.createAccount(selectedSalonId, newStylist);
+      setShowAddStylistForm(false);
+      setNewStylist({ full_name: '', email: '', phone: '', password: '', bio: '' });
+      loadStylists(selectedSalonId);
+    } catch (err) {
+      setStylistError(err.response?.data?.detail || 'خطا در ثبت آرایشگر');
     }
   };
 
@@ -177,8 +224,118 @@ export default function SalonOwnerDashboard() {
       )}
 
       {activeTab === 'stylists' && (
-        <div className="text-center py-12 text-gray-500">
-          مدیریت آرایشگرها (بخش کامل در نسخه نهایی)
+        <div>
+          {salons.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              ابتدا یک آرایشگاه ثبت کنید
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-4 gap-4">
+                {salons.length > 1 ? (
+                  <select
+                    value={selectedSalonId}
+                    onChange={(e) => setSelectedSalonId(e.target.value)}
+                    className="px-4 py-2 border rounded-lg"
+                  >
+                    {salons.map((s) => (
+                      <option key={s._id} value={s._id}>{s.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-sm text-gray-600">{salons[0]?.name}</span>
+                )}
+                <button
+                  onClick={() => setShowAddStylistForm(!showAddStylistForm)}
+                  className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800"
+                >
+                  <Plus className="w-4 h-4" />
+                  آرایشگر جدید
+                </button>
+              </div>
+
+              {showAddStylistForm && (
+                <div className="border rounded-xl p-6 mb-6 bg-gray-50">
+                  <h2 className="text-lg font-medium mb-4">افزودن آرایشگر</h2>
+
+                  {stylistError && (
+                    <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg border border-red-200 text-sm">
+                      {stylistError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleCreateStylist} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      placeholder="نام کامل"
+                      value={newStylist.full_name}
+                      onChange={(e) => setNewStylist({ ...newStylist, full_name: e.target.value })}
+                      className="px-4 py-2 border rounded-lg"
+                      required
+                    />
+                    <input
+                      type="email"
+                      placeholder="ایمیل"
+                      value={newStylist.email}
+                      onChange={(e) => setNewStylist({ ...newStylist, email: e.target.value })}
+                      className="px-4 py-2 border rounded-lg"
+                      required
+                    />
+                    <input
+                      type="tel"
+                      placeholder="شماره موبایل"
+                      value={newStylist.phone}
+                      onChange={(e) => setNewStylist({ ...newStylist, phone: e.target.value })}
+                      className="px-4 py-2 border rounded-lg"
+                      required
+                    />
+                    <input
+                      type="password"
+                      placeholder="رمز عبور (حداقل ۶ کاراکتر)"
+                      value={newStylist.password}
+                      onChange={(e) => setNewStylist({ ...newStylist, password: e.target.value })}
+                      className="px-4 py-2 border rounded-lg"
+                      minLength={6}
+                      required
+                    />
+                    <textarea
+                      placeholder="بیوگرافی (اختیاری)"
+                      value={newStylist.bio}
+                      onChange={(e) => setNewStylist({ ...newStylist, bio: e.target.value })}
+                      className="px-4 py-2 border rounded-lg md:col-span-2 resize-none"
+                      rows={2}
+                    />
+                    <div className="md:col-span-2 flex gap-2">
+                      <button type="submit" className="px-4 py-2 bg-black text-white rounded-lg">
+                        ثبت
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddStylistForm(false)}
+                        className="px-4 py-2 border rounded-lg hover:bg-gray-100"
+                      >
+                        انصراف
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {stylists.map((stylist) => (
+                  <div key={stylist._id} className="border rounded-xl p-4">
+                    <h3 className="font-medium">{stylist.full_name || stylist.user_id}</h3>
+                    {stylist.bio && <p className="text-sm text-gray-500 mt-1">{stylist.bio}</p>}
+                  </div>
+                ))}
+                {stylists.length === 0 && (
+                  <div className="col-span-2 text-center py-12 text-gray-500">
+                    هنوز آرایشگری برای این آرایشگاه ثبت نشده
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 

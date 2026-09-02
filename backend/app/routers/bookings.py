@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.dependencies.auth import get_current_active_user, require_customer, require_owner
 from app.database import db
 from app.models.booking import BookingCreate, BookingResponse, BookingStatus
+from app.utils.transaction_logger import log_transaction
 from bson import ObjectId
 from datetime import datetime, timedelta
 
@@ -35,6 +36,7 @@ async def create_booking(booking: BookingCreate, current_user: dict = Depends(re
     booking_dict["end_time"] = end_time.isoformat()
 
     await db.bookings.insert_one(booking_dict)
+    log_transaction("create", "bookings", booking_dict["_id"], booking_dict, actor_id=str(current_user["_id"]))
     return BookingResponse(**booking_dict)
 
 
@@ -70,8 +72,7 @@ async def update_booking_status(
     if not is_customer and not is_owner:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    await db.bookings.update_one(
-        {"_id": booking_id},
-        {"$set": {"status": new_status.value, "updated_at": datetime.utcnow()}},
-    )
+    update_data = {"status": new_status.value, "updated_at": datetime.utcnow()}
+    await db.bookings.update_one({"_id": booking_id}, {"$set": update_data})
+    log_transaction("update", "bookings", booking_id, update_data, actor_id=str(current_user["_id"]))
     return {"message": "Booking status updated"}

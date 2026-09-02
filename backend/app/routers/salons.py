@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.dependencies.auth import require_owner
 from app.database import db
 from app.models.salon import SalonCreate, SalonResponse, SalonStatus
+from app.utils.transaction_logger import log_transaction
 from bson import ObjectId
 from datetime import datetime
 
@@ -17,6 +18,7 @@ async def create_salon(salon: SalonCreate, current_user: dict = Depends(require_
     salon_dict["updated_at"] = datetime.utcnow()
 
     await db.salons.insert_one(salon_dict)
+    log_transaction("create", "salons", salon_dict["_id"], salon_dict, actor_id=str(current_user["_id"]))
     return SalonResponse(**salon_dict)
 
 
@@ -53,4 +55,5 @@ async def update_salon(salon_id: str, update_data: dict, current_user: dict = De
 
     update_data["updated_at"] = datetime.utcnow()
     await db.salons.update_one({"_id": salon_id}, {"$set": update_data})
+    log_transaction("update", "salons", salon_id, update_data, actor_id=str(current_user["_id"]))
     return {"message": "Salon updated"}

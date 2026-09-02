@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import init_db
-from app.routers import auth, admin, salons, stylists, chairs, bookings, services
+from app.routers import auth, admin, salons, stylists, chairs, bookings, services, logs
 
 app = FastAPI(
     title="Salon Booking System",
@@ -24,6 +24,7 @@ app.include_router(stylists.router)
 app.include_router(chairs.router)
 app.include_router(bookings.router)
 app.include_router(services.router)
+app.include_router(logs.router)
 
 @app.on_event("startup")
 async def startup():
