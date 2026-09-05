@@ -8,6 +8,7 @@ import BookingPage from './pages/BookingPage';
 import AdminPanel from './pages/AdminPanel';
 import SalonOwnerDashboard from './pages/SalonOwnerDashboard';
 import StylistDashboard from './pages/StylistDashboard';
+import Profile from './pages/Profile';
 import { useAuthStore } from './store/authStore';
 
 function ProtectedRoute({ children, allow }) {
@@ -48,6 +49,14 @@ export default function App() {
             element={
               <ProtectedRoute allow={(u) => u?.role === 'stylist'}>
                 <StylistDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <Profile />
               </ProtectedRoute>
             }
           />

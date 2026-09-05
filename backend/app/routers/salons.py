@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from app.dependencies.auth import require_owner
 from app.database import db
 from app.models.salon import SalonCreate, SalonResponse, SalonStatus
+from app.utils.file_storage import save_image
 from app.utils.transaction_logger import log_transaction
 from bson import ObjectId
 from datetime import datetime
@@ -63,3 +64,22 @@ async def update_salon(salon_id: str, update_data: dict, current_user: dict = De
     await db.salons.update_one({"_id": salon_id}, {"$set": update_data})
     log_transaction("update", "salons", salon_id, update_data, actor_id=str(current_user["_id"]))
     return {"message": "Salon updated"}
+
+
+@router.post("/{salon_id}/images")
+async def upload_salon_image(
+    salon_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_owner),
+):
+    salon = await db.salons.find_one({"_id": salon_id})
+    if not salon or salon["owner_id"] != str(current_user["_id"]):
+        raise HTTPException(status_code=403, detail="Not your salon")
+
+    url = await save_image(file, "salons")
+    await db.salons.update_one(
+        {"_id": salon_id},
+        {"$push": {"images": url}, "$set": {"updated_at": datetime.utcnow()}},
+    )
+    log_transaction("update", "salons", salon_id, {"image_added": url}, actor_id=str(current_user["_id"]))
+    return await db.salons.find_one({"_id": salon_id})

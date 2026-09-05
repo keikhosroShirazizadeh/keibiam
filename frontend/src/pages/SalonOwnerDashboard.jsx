@@ -2,7 +2,12 @@ import { useState, useEffect } from 'react';
 import { salonApi } from '../api/salons';
 import { bookingApi } from '../api/bookings';
 import { stylistApi } from '../api/stylists';
-import { Plus, Settings, Users, Calendar } from 'lucide-react';
+import { chairApi } from '../api/chairs';
+import { fileUrl } from '../api/axiosConfig';
+import LocationPicker from '../components/LocationPicker';
+import { Plus, Settings, Users, Calendar, Armchair, ImagePlus } from 'lucide-react';
+
+const TEHRAN = { lat: 35.6892, lng: 51.389 };
 
 export default function SalonOwnerDashboard() {
   const [salons, setSalons] = useState([]);
@@ -14,6 +19,8 @@ export default function SalonOwnerDashboard() {
     phone: '',
     description: '',
     management_mode: 'chair_based',
+    lat: TEHRAN.lat,
+    lng: TEHRAN.lng,
   });
 
   const [selectedSalonId, setSelectedSalonId] = useState('');
@@ -28,6 +35,11 @@ export default function SalonOwnerDashboard() {
     bio: '',
   });
 
+  const [chairs, setChairs] = useState([]);
+  const [showAddChairForm, setShowAddChairForm] = useState(false);
+  const [chairError, setChairError] = useState('');
+  const [newChair, setNewChair] = useState({ name: '', description: '' });
+
   useEffect(() => {
     loadSalons();
   }, []);
@@ -41,6 +53,9 @@ export default function SalonOwnerDashboard() {
   useEffect(() => {
     if (activeTab === 'stylists' && selectedSalonId) {
       loadStylists(selectedSalonId);
+    }
+    if (activeTab === 'chairs' && selectedSalonId) {
+      loadChairs(selectedSalonId);
     }
   }, [activeTab, selectedSalonId]);
 
@@ -62,6 +77,15 @@ export default function SalonOwnerDashboard() {
     }
   };
 
+  const loadChairs = async (salonId) => {
+    try {
+      const res = await chairApi.getBySalon(salonId);
+      setChairs(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleCreateStylist = async (e) => {
     e.preventDefault();
     setStylistError('');
@@ -75,15 +99,55 @@ export default function SalonOwnerDashboard() {
     }
   };
 
+  const handleCreateChair = async (e) => {
+    e.preventDefault();
+    setChairError('');
+    try {
+      await chairApi.create(selectedSalonId, newChair);
+      setShowAddChairForm(false);
+      setNewChair({ name: '', description: '' });
+      loadChairs(selectedSalonId);
+    } catch (err) {
+      setChairError(err.response?.data?.detail || 'خطا در ثبت صندلی');
+    }
+  };
+
+  const handleUploadChairImage = async (chairId, file) => {
+    if (!file) return;
+    try {
+      await chairApi.uploadImage(chairId, file);
+      loadChairs(selectedSalonId);
+    } catch (err) {
+      alert('خطا در آپلود عکس');
+    }
+  };
+
+  const handleUploadSalonImage = async (salonId, file) => {
+    if (!file) return;
+    try {
+      await salonApi.uploadImage(salonId, file);
+      loadSalons();
+    } catch (err) {
+      alert('خطا در آپلود عکس');
+    }
+  };
+
   const handleCreateSalon = async (e) => {
     e.preventDefault();
     try {
       await salonApi.create({
-        ...newSalon,
-        location: { type: 'Point', coordinates: [51.389, 35.6892] }, // Default Tehran
+        name: newSalon.name,
+        address: newSalon.address,
+        phone: newSalon.phone,
+        description: newSalon.description,
+        management_mode: newSalon.management_mode,
+        location: { type: 'Point', coordinates: [newSalon.lng, newSalon.lat] },
       });
       setShowCreateForm(false);
-      setNewSalon({ name: '', address: '', phone: '', description: '', management_mode: 'chair_based' });
+      setNewSalon({
+        name: '', address: '', phone: '', description: '',
+        management_mode: 'chair_based', lat: TEHRAN.lat, lng: TEHRAN.lng,
+      });
       loadSalons();
     } catch (err) {
       alert('خطا در ایجاد آرایشگاه');
@@ -146,6 +210,14 @@ export default function SalonOwnerDashboard() {
               className="px-4 py-2 border rounded-lg md:col-span-2 resize-none"
               rows={3}
             />
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-2">موقعیت روی نقشه (برای انتخاب کلیک کنید)</label>
+              <LocationPicker
+                lat={newSalon.lat}
+                lng={newSalon.lng}
+                onChange={(lat, lng) => setNewSalon({ ...newSalon, lat, lng })}
+              />
+            </div>
             <div className="md:col-span-2 flex gap-2">
               <button type="submit" className="px-4 py-2 bg-black text-white rounded-lg">
                 ثبت
@@ -167,6 +239,7 @@ export default function SalonOwnerDashboard() {
         {[
           { id: 'salons', label: 'آرایشگاه‌ها', icon: Settings },
           { id: 'stylists', label: 'آرایشگرها', icon: Users },
+          { id: 'chairs', label: 'صندلی‌ها', icon: Armchair },
           { id: 'bookings', label: 'نوبت‌ها', icon: Calendar },
         ].map((tab) => (
           <button
@@ -201,13 +274,38 @@ export default function SalonOwnerDashboard() {
               </div>
               <p className="text-sm text-gray-600 mb-2">{salon.address}</p>
               <p className="text-sm text-gray-500 mb-3">{salon.description}</p>
-              <div className="flex gap-2">
+
+              <div className="flex gap-2 flex-wrap mb-3">
+                {salon.images?.map((img, i) => (
+                  <img
+                    key={i}
+                    src={fileUrl(img)}
+                    alt=""
+                    className="w-16 h-16 object-cover rounded-lg border"
+                  />
+                ))}
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
                 <button className="text-sm px-3 py-1 border rounded-lg hover:bg-gray-50">
                   ویرایش
                 </button>
-                <button className="text-sm px-3 py-1 border rounded-lg hover:bg-gray-50">
+                <button
+                  onClick={() => { setSelectedSalonId(salon._id); setActiveTab('chairs'); }}
+                  className="text-sm px-3 py-1 border rounded-lg hover:bg-gray-50"
+                >
                   مدیریت صندلی‌ها
                 </button>
+                <label className="flex items-center gap-1 text-sm px-3 py-1 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <ImagePlus className="w-3.5 h-3.5" />
+                  افزودن عکس
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => handleUploadSalonImage(salon._id, e.target.files[0])}
+                  />
+                </label>
               </div>
             </div>
           ))}
@@ -327,6 +425,118 @@ export default function SalonOwnerDashboard() {
                 {stylists.length === 0 && (
                   <div className="col-span-2 text-center py-12 text-gray-500">
                     هنوز آرایشگری برای این آرایشگاه ثبت نشده
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'chairs' && (
+        <div>
+          {salons.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              ابتدا یک آرایشگاه ثبت کنید
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-4 gap-4">
+                {salons.length > 1 ? (
+                  <select
+                    value={selectedSalonId}
+                    onChange={(e) => setSelectedSalonId(e.target.value)}
+                    className="px-4 py-2 border rounded-lg"
+                  >
+                    {salons.map((s) => (
+                      <option key={s._id} value={s._id}>{s.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-sm text-gray-600">{salons[0]?.name}</span>
+                )}
+                <button
+                  onClick={() => setShowAddChairForm(!showAddChairForm)}
+                  className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800"
+                >
+                  <Plus className="w-4 h-4" />
+                  صندلی جدید
+                </button>
+              </div>
+
+              {showAddChairForm && (
+                <div className="border rounded-xl p-6 mb-6 bg-gray-50">
+                  <h2 className="text-lg font-medium mb-4">افزودن صندلی</h2>
+
+                  {chairError && (
+                    <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg border border-red-200 text-sm">
+                      {chairError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleCreateChair} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      placeholder="نام صندلی (مثلا: صندلی ۱)"
+                      value={newChair.name}
+                      onChange={(e) => setNewChair({ ...newChair, name: e.target.value })}
+                      className="px-4 py-2 border rounded-lg"
+                      required
+                    />
+                    <input
+                      type="text"
+                      placeholder="توضیحات (اختیاری)"
+                      value={newChair.description}
+                      onChange={(e) => setNewChair({ ...newChair, description: e.target.value })}
+                      className="px-4 py-2 border rounded-lg"
+                    />
+                    <div className="md:col-span-2 flex gap-2">
+                      <button type="submit" className="px-4 py-2 bg-black text-white rounded-lg">
+                        ثبت
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddChairForm(false)}
+                        className="px-4 py-2 border rounded-lg hover:bg-gray-100"
+                      >
+                        انصراف
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {chairs.map((chair) => (
+                  <div key={chair._id} className="border rounded-xl p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
+                        {chair.image_url ? (
+                          <img src={fileUrl(chair.image_url)} alt={chair.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <Armchair className="w-6 h-6 text-gray-400" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-medium">{chair.name}</h3>
+                        {chair.description && <p className="text-sm text-gray-500">{chair.description}</p>}
+                        <label className="flex items-center gap-1 text-xs mt-2 text-black hover:underline cursor-pointer w-fit">
+                          <ImagePlus className="w-3.5 h-3.5" />
+                          افزودن عکس
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => handleUploadChairImage(chair._id, e.target.files[0])}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {chairs.length === 0 && (
+                  <div className="col-span-2 text-center py-12 text-gray-500">
+                    هنوز صندلی‌ای برای این آرایشگاه ثبت نشده
                   </div>
                 )}
               </div>

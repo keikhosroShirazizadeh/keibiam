@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { fileUrl } from '../api/axiosConfig';
 import { Scissors, LogOut, User, Shield, Settings, Calendar } from 'lucide-react';
 
 export default function Navbar() {
@@ -40,10 +41,18 @@ export default function Navbar() {
                   برنامه
                 </Link>
               )}
-              <div className="flex items-center gap-2 text-sm">
-                <User className="w-4 h-4" />
+              <Link to="/profile" className="flex items-center gap-2 text-sm hover:text-gray-600">
+                {user?.avatar_url ? (
+                  <img
+                    src={fileUrl(user.avatar_url)}
+                    alt={user.full_name}
+                    className="w-6 h-6 rounded-full object-cover"
+                  />
+                ) : (
+                  <User className="w-4 h-4" />
+                )}
                 <span>{user?.full_name}</span>
-              </div>
+              </Link>
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700"

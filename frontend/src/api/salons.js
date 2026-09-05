@@ -8,4 +8,11 @@ export const salonApi = {
   update: (salonId, data) => api.put(`/salons/${salonId}`, data),
   updateStatus: (salonId, status, isVisible) =>
     api.put(`/admin/salons/${salonId}/status`, null, { params: { status, is_visible: isVisible } }),
+  uploadImage: (salonId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/salons/${salonId}/images`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };

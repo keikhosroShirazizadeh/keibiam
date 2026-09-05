@@ -1,8 +1,15 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+export function fileUrl(path) {
+  if (!path) return path;
+  return path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseURL: API_BASE_URL,
 });
 
 api.interceptors.request.use((config) => {

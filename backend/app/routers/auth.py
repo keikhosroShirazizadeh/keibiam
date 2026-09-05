@@ -8,10 +8,8 @@ from app.dependencies.auth import get_current_active_user
 from app.models.user import UserCreate, UserResponse, UserRole
 from app.utils.security import verify_password, get_password_hash
 from app.utils.transaction_logger import log_transaction
+from app.utils.file_storage import save_image
 from bson import ObjectId
-import aiofiles
-import os
-import uuid
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -64,3 +62,18 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_active_user)):
     return UserResponse(**current_user)
+
+
+@router.post("/me/avatar", response_model=UserResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_active_user),
+):
+    url = await save_image(file, "avatars")
+    await db.users.update_one(
+        {"_id": current_user["_id"]},
+        {"$set": {"avatar_url": url, "updated_at": datetime.utcnow()}},
+    )
+    log_transaction("update", "users", current_user["_id"], {"avatar_url": url}, actor_id=str(current_user["_id"]))
+    updated = await db.users.find_one({"_id": current_user["_id"]})
+    return UserResponse(**updated)

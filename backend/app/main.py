@@ -1,7 +1,13 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from app.config import settings
 from app.database import init_db
 from app.routers import auth, admin, salons, stylists, chairs, bookings, services, logs
+
+Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="Salon Booking System",
@@ -30,6 +36,8 @@ app.include_router(chairs.router)
 app.include_router(bookings.router)
 app.include_router(services.router)
 app.include_router(logs.router)
+
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 @app.on_event("startup")
 async def startup():
