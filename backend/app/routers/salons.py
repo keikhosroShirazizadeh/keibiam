@@ -37,6 +37,12 @@ async def list_salons(status: SalonStatus = None, owner_id: str = None, limit: i
     return {"salons": salons}
 
 
+@router.get("/mine")
+async def list_my_salons(current_user: dict = Depends(require_owner)):
+    salons = await db.salons.find({"owner_id": str(current_user["_id"])}).to_list(length=100)
+    return {"salons": salons}
+
+
 @router.get("/{salon_id}")
 async def get_salon(salon_id: str):
     salon = await db.salons.find_one({"_id": salon_id})

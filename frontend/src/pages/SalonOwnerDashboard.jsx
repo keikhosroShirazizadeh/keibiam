@@ -2,11 +2,9 @@ import { useState, useEffect } from 'react';
 import { salonApi } from '../api/salons';
 import { bookingApi } from '../api/bookings';
 import { stylistApi } from '../api/stylists';
-import { useAuthStore } from '../store/authStore';
 import { Plus, Settings, Users, Calendar } from 'lucide-react';
 
 export default function SalonOwnerDashboard() {
-  const { user } = useAuthStore();
   const [salons, setSalons] = useState([]);
   const [activeTab, setActiveTab] = useState('salons');
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -48,10 +46,8 @@ export default function SalonOwnerDashboard() {
 
   const loadSalons = async () => {
     try {
-      // In real app, you'd have an endpoint for owner's salons
-      const res = await salonApi.getAll({ limit: 100 });
-      const mySalons = res.data.salons.filter(s => s.owner_id === user?._id);
-      setSalons(mySalons);
+      const res = await salonApi.getMine();
+      setSalons(res.data.salons);
     } catch (err) {
       console.error(err);
     }
