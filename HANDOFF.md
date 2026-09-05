@@ -255,3 +255,45 @@ Fix was operational, not code: restart `mongod` pointed at `.mongo-data/`,
 then start uvicorn normally. No source changes this round. If you hit this
 again, check `Get-NetTCPConnection -LocalPort 27017` first — if nothing's
 listening, that's the actual problem.
+
+### Round 4 — "cannot register barber", again: CORS, and a process pileup
+Reported again after Round 2's fix had already landed, so the feature
+itself wasn't the suspect this time. The backend log showed the real
+failure: `OPTIONS /auth/register` preflight requests were getting
+**400 Bad Request** from Starlette's CORS middleware. `main.py`'s
+`allow_origins` only listed `http://localhost:5173` and
+`http://localhost:3000` — if the browser was pointed at
+`http://127.0.0.1:5173` instead of `localhost:5173` (same server, but a
+different origin as far as CORS enforcement cares), every non-trivial
+request got rejected at the preflight, before the actual endpoint logic
+ever ran. Fixed by adding the `127.0.0.1` equivalents to `allow_origins`.
+
+While diagnosing, found the actual environment was worse than expected:
+**three separate `uvicorn` processes** were all bound to port 8000 at
+once (one under the project's venv, others under a system-wide Python
+install — left over from earlier sessions' `uvicorn --reload` runs never
+being cleanly stopped), and **two separate `vite` processes** on 5173
+and 5174. Whichever process actually wins the socket bind on Windows is
+unpredictable, so it's entirely possible to be editing/testing against
+one instance while the browser or curl talks to a stale one running
+different code (or, worse, a different Python environment without the
+`bcrypt` pin from Round 1). `uvicorn --reload`'s Windows behavior makes
+this worse: reload spawns a new worker as a `multiprocessing` child
+process, and killing the parent reloader does **not** kill that child —
+it's left orphaned, still holding the port, invisible to a process
+search for `*uvicorn*` in its command line.
+
+If you hit connection weirdness that doesn't make sense (wrong CORS
+behavior, stale responses, "it worked a second ago"), check for exactly
+this before debugging application code:
+```powershell
+Get-NetTCPConnection -LocalPort 8000,5173 -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Select ProcessId,CommandLine
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Select ProcessId,CommandLine
+```
+Kill everything matching, confirm the ports are free, then start exactly
+one instance of each. Running the backend without `--reload` during
+manual testing avoids the orphaned-worker failure mode entirely, at the
+cost of restarting manually after edits.
+
+Commit: `Allow 127.0.0.1 origins in CORS alongside localhost`.
