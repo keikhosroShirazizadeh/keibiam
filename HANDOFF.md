@@ -58,13 +58,15 @@ that's the convention the frontend expects throughout.
 
 - `auth.py` — `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - `salons.py` — create (owner), list (public; `status` filter for
-  admin/owner views, defaults to active+visible), get one, update (owner)
+  admin/owner views, defaults to active+visible), `GET /salons/mine`
+  (owner; every salon they own, any status), get one, update (owner),
+  `POST /salons/{id}/images` (owner; appends a photo to the gallery)
 - `admin.py` — `PUT /admin/salons/{id}/status` — approve/reject/toggle
   visibility (admin/super_admin)
 - `services.py` — `POST /services/salon/{salon_id}` (owner), list by salon
   (public), update/soft-delete (owner)
 - `chairs.py` — `POST /chairs/salon/{salon_id}` (owner), list by salon
-  (public)
+  (public), `POST /chairs/{id}/image` (owner; sets/replaces the photo)
 - `stylists.py` — `POST /stylists/salon/{salon_id}/create-account` (owner;
   creates the barber's login **and** their stylist profile together —
   see history below for why), `POST /stylists/` (link an existing
@@ -75,6 +77,20 @@ that's the convention the frontend expects throughout.
   `GET /bookings/salon/{salon_id}` (owner), `PUT /bookings/{id}/status`
 - `logs.py` — `GET /logs/` (admin-only) — queries today's transaction log,
   filterable by `collection`/`action`/`actor_id`
+
+## File uploads (`backend/app/utils/file_storage.py`)
+
+`save_image(file, subdir)` validates content-type (JPEG/PNG/WEBP/GIF only)
+and size (5MB cap), writes the file under `backend/uploads/<subdir>/` with
+a generated filename, and returns a `/uploads/<subdir>/<file>` URL path.
+`main.py` mounts `backend/uploads/` as static files at `/uploads`, so that
+path is directly fetchable from the backend host. Three endpoints use it:
+`POST /auth/me/avatar` (any user, their own profile picture),
+`POST /salons/{id}/images` (owner, appends to the salon's photo gallery),
+`POST /chairs/{id}/image` (owner, sets a chair's photo). The frontend's
+`fileUrl()` helper (`api/axiosConfig.js`) prefixes these relative paths
+with the backend's base URL, since the frontend is served from a
+different origin/port than the backend.
 
 ## Transaction logging (`backend/app/utils/transaction_logger.py`)
 
@@ -93,20 +109,29 @@ required).
 
 - `App.jsx` — router; `/`, `/login`, `/register`, `/salon/:salonId`,
   `/salon/:salonId/book`, `/admin`, `/owner-dashboard`,
-  `/stylist-dashboard` (last three are role-gated via a `ProtectedRoute`
-  wrapper)
+  `/stylist-dashboard`, `/profile` (last four are role-gated — `/profile`
+  just requires being logged in, any role — via a `ProtectedRoute` wrapper)
 - `store/authStore.js` — zustand store, persisted to localStorage:
-  `token`, `user`, `isAuthenticated`, `login()`, `logout()`, and
-  `isSuperAdmin()/isAdmin()/isSalonOwner()/isStylist()/isCustomer()` role
-  checks
-- `api/` — `axiosConfig.js` (injects the bearer token, logs out on 401),
-  `salons.js`, `bookings.js`, `services.js`, `stylists.js`
+  `token`, `user`, `isAuthenticated`, `login()`, `logout()`, `setUser()`
+  (used after an avatar upload to refresh the stored user without a full
+  re-login), and `isSuperAdmin()/isAdmin()/isSalonOwner()/isStylist()/
+  isCustomer()` role checks
+- `api/` — `axiosConfig.js` (injects the bearer token, logs out on 401,
+  exports `fileUrl()` to resolve `/uploads/...` paths against the backend
+  origin), `salons.js`, `bookings.js`, `services.js`, `stylists.js`,
+  `chairs.js`, `profile.js`
+- `components/LocationPicker.jsx` — `react-leaflet` + OpenStreetMap tiles
+  (no API key needed), click-to-place-marker map; used by the salon
+  creation form
 - **Pages**: `Home` (salon browse grid), `SalonDetail` (service picker →
   hands off to booking), `BookingPage` (date/time picker), `Login`,
-  `Register`, `AdminPanel` (salon approval queue, approve/reject wired to
-  the real admin endpoint), `SalonOwnerDashboard` (create salons; real
-  "add a barber" form + stylist list on the stylists tab; bookings tab
-  still placeholder text), `StylistDashboard` (placeholder)
+  `Register`, `Profile` (avatar upload, any logged-in user), `AdminPanel`
+  (salon approval queue, approve/reject wired to the real admin endpoint),
+  `SalonOwnerDashboard` (create salons with a map-picked location; each
+  salon card shows its photo gallery with an upload button; real
+  "add a barber" form + stylist list on the stylists tab; "Chairs" tab —
+  create a chair, upload its photo; bookings tab still placeholder text),
+  `StylistDashboard` (placeholder)
 
 ## Known remaining gaps
 
@@ -121,16 +146,17 @@ Not blockers to running the app, but real gaps to close next:
   `PUT /{id}/status` — just not wired into the dashboard UI).
 - **`StylistDashboard`** is a placeholder — no schedule management or
   booking view for stylists yet.
-- **No chair-based booking UI or chair management UI** — `SalonDetail`/
-  `BookingPage` don't yet let a customer pick a chair for a `chair_based`
-  salon, and the owner dashboard has no UI to add chairs either (the
-  `chair_id` field exists on `Booking` and `chairs.py`'s endpoints exist,
-  just unused by the UI).
+- **No chair-based booking UI for customers** — chair *management* now
+  exists (owner dashboard's "Chairs" tab: create a chair, upload its
+  photo), but `SalonDetail`/`BookingPage` still don't let a customer pick
+  a chair when booking at a `chair_based` salon (the `chair_id` field
+  exists on `Booking`, just unused by the booking UI).
 - **Self-registration as `super_admin`** — see Roles above.
-- **Owner dashboard's "my salons"** filters client-side by `owner_id`
-  rather than a dedicated query — works, but doesn't scale.
-- No image upload wired up yet, despite `UploadFile`/`aiofiles` deps and
-  `uploads/` directory scaffolding being present.
+- **No edit/delete for salon photos or chairs** — you can add a photo to a
+  salon's gallery or set a chair's photo, but there's no UI (or endpoint)
+  to remove one, and the salon card's "ویرایش" (edit) button is still
+  dead — no edit-salon form exists yet, so location/name/etc. can't be
+  changed after creation, only appended to (photos) or approved (admin).
 
 ## Running locally
 
@@ -297,3 +323,58 @@ manual testing avoids the orphaned-worker failure mode entirely, at the
 cost of restarting manually after edits.
 
 Commit: `Allow 127.0.0.1 origins in CORS alongside localhost`.
+
+### Round 5 — owner's own salons invisible in their dashboard
+Reported: a salon owner's created salons weren't showing up in their own
+dashboard. Root cause: `GET /salons/` (the public listing endpoint) always
+defaults to `status=active AND is_visible=true` whenever no `status` param
+is passed — and a newly-created salon starts as `status=pending,
+is_visible=false`. The dashboard called this public endpoint with no
+status filter and then filtered the result by `owner_id` client-side, but
+the server had already excluded the salon *before* that filter ever ran,
+so it was invisible to its own owner with no way to even check on its
+pending status.
+
+Fixed by adding `GET /salons/mine` (owner-authenticated), returning every
+salon the current user owns regardless of status, and pointing the
+dashboard at it instead of the public-listing-plus-client-filter hack.
+
+Commit: `Fix owner dashboard never showing the owner's own salons`.
+
+### Round 6 — profile pictures, salon photo galleries, map location, chair photos
+Requested feature set: avatar upload for any user, photo galleries for
+salons, a map picker for a salon's location (previously hardcoded to
+Tehran on creation), and photos for chairs. The last one required first
+building chair *management* itself, since there was no UI for chairs at
+all before this — you can't attach a photo to something with no
+creation UI.
+
+Built:
+- `app/utils/file_storage.py` — validates (JPEG/PNG/WEBP/GIF, 5MB cap)
+  and persists an uploaded image under `backend/uploads/<subdir>/`,
+  returning a `/uploads/<subdir>/<file>` URL. `main.py` mounts that
+  directory as static files. This is also what the original scaffold's
+  unused `aiofiles`/`UploadFile` imports in `auth.py` were clearly meant
+  for and never got — now they're actually exercised.
+- Three upload endpoints: `POST /auth/me/avatar`, `POST
+  /salons/{id}/images` (`$push`, so a gallery builds up over multiple
+  uploads), `POST /chairs/{id}/image`.
+- `LocationPicker.jsx` (`react-leaflet` + OpenStreetMap tiles, no API key
+  needed) — click-to-place-marker map, replacing the hardcoded Tehran
+  coordinates in the salon creation form.
+- A `Profile` page (`/profile`, any logged-in user) for avatar upload;
+  Navbar now shows the user's avatar.
+- Owner dashboard: photo gallery + upload button on each salon card; new
+  "Chairs" tab (mirrors the existing "Stylists" tab pattern) — salon
+  selector, create-chair form, per-chair photo upload. The salon card's
+  "مدیریت صندلی‌ها" (manage chairs) button, dead since Round 1, now jumps
+  to this tab with that salon pre-selected.
+
+Verified live end-to-end via curl with multipart uploads (a generated
+test JPEG): avatar upload, salon creation with non-default coordinates,
+salon photo upload, chair creation, chair photo upload, fetching an
+uploaded file back from `/uploads/...` with the correct content-type,
+and a non-image file correctly rejected with 400.
+
+Commit: `Add profile pictures, salon photo galleries, map location
+picker, chair photos`.
