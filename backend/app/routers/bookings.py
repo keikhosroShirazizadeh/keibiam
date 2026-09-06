@@ -4,7 +4,7 @@ from app.database import db
 from app.models.booking import BookingCreate, BulkBookingCreate, BookingResponse, BookingStatus
 from app.utils.transaction_logger import log_transaction
 from bson import ObjectId
-from datetime import datetime, timedelta
+from datetime import date as date_type, datetime, timedelta
 
 router = APIRouter(prefix="/bookings", tags=["Bookings"])
 
@@ -122,6 +122,26 @@ async def create_bulk_booking(payload: BulkBookingCreate, current_user: dict = D
 async def get_my_bookings(current_user: dict = Depends(get_current_active_user)):
     bookings = await db.bookings.find({"customer_id": str(current_user["_id"])}).to_list(length=100)
     return bookings
+
+
+@router.get("/salon/{salon_id}/availability")
+async def get_salon_availability(salon_id: str, date: date_type):
+    """Public: which time boxes are already confirmed-busy on a given day,
+    so the customer's day-grid preview can show real (not decorative)
+    availability. Only confirmed bookings count as busy - pending requests
+    don't block other customers from also requesting the same box, since
+    the owner/stylist is the one who decides which of several requests for
+    the same slot actually gets confirmed."""
+    salon = await db.salons.find_one({"_id": salon_id})
+    if not salon:
+        raise HTTPException(status_code=404, detail="Salon not found")
+
+    bookings = await db.bookings.find(
+        {"salon_id": salon_id, "booking_date": date.isoformat(), "status": BookingStatus.CONFIRMED.value},
+        {"start_time": 1},
+    ).to_list(length=500)
+
+    return {"busy_times": [b["start_time"] for b in bookings]}
 
 
 @router.get("/salon/{salon_id}")

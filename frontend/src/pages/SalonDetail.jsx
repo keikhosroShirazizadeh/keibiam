@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { salonApi } from '../api/salons';
 import { serviceApi } from '../api/services';
+import { bookingApi } from '../api/bookings';
+import DayBoxGrid from '../components/DayBoxGrid';
+import { format } from 'date-fns';
 import { MapPin } from 'lucide-react';
 
 export default function SalonDetail() {
@@ -10,10 +13,14 @@ export default function SalonDetail() {
   const [salon, setSalon] = useState(null);
   const [services, setServices] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [busyTimes, setBusyTimes] = useState([]);
 
   useEffect(() => {
     salonApi.getById(salonId).then((res) => setSalon(res.data));
     serviceApi.getBySalon(salonId).then((res) => setServices(res.data));
+
+    const today = format(new Date(), 'yyyy-MM-dd');
+    bookingApi.getAvailability(salonId, today).then((res) => setBusyTimes(res.data.busy_times));
   }, [salonId]);
 
   const toggleService = (id) => {
@@ -37,6 +44,14 @@ export default function SalonDetail() {
         <MapPin className="w-3.5 h-3.5" />
         {salon.address}
       </p>
+
+      <div className="mb-6">
+        <h2 className="text-lg font-medium mb-1">برنامه امروز</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          هر روز به بازه‌های {salon.min_booking_interval} دقیقه‌ای تقسیم می‌شود. بازه‌های خط‌خورده قبلاً تایید شده‌اند.
+        </p>
+        <DayBoxGrid boxMinutes={salon.min_booking_interval} busyTimes={busyTimes} />
+      </div>
 
       <h2 className="text-lg font-medium mb-3">انتخاب سرویس</h2>
       <div className="space-y-2 mb-6">

@@ -4,11 +4,10 @@ import { salonApi } from '../api/salons';
 import { chairApi } from '../api/chairs';
 import { stylistApi } from '../api/stylists';
 import { bookingApi } from '../api/bookings';
+import DayBoxGrid from '../components/DayBoxGrid';
 import { format, addDays } from 'date-fns';
 
 const MAX_BOXES = 10;
-const DAY_START_HOUR = 9;
-const DAY_END_HOUR = 21;
 
 export default function BookingPage() {
   const { salonId } = useParams();
@@ -24,6 +23,7 @@ export default function BookingPage() {
 
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedBoxes, setSelectedBoxes] = useState([]);
+  const [busyTimes, setBusyTimes] = useState([]);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -40,6 +40,15 @@ export default function BookingPage() {
     });
   }, [salonId]);
 
+  useEffect(() => {
+    if (!selectedDate) return;
+    bookingApi.getAvailability(salonId, selectedDate).then((res) => {
+      setBusyTimes(res.data.busy_times);
+      const busy = new Set(res.data.busy_times.map((t) => t.slice(0, 5)));
+      setSelectedBoxes((prev) => prev.filter((t) => !busy.has(t)));
+    });
+  }, [salonId, selectedDate]);
+
   if (!services || services.length === 0) {
     return (
       <div className="max-w-2xl mx-auto p-4 text-center">
@@ -55,14 +64,6 @@ export default function BookingPage() {
   }
 
   const boxMinutes = salon?.min_booking_interval || 15;
-
-  // Time boxes across the salon's booking-interval grid
-  const timeSlots = [];
-  for (let mins = DAY_START_HOUR * 60; mins < DAY_END_HOUR * 60; mins += boxMinutes) {
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    timeSlots.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
-  }
 
   // Next 90 days
   const dates = [];
@@ -189,24 +190,12 @@ export default function BookingPage() {
             </label>
             <span className="text-xs text-gray-500">{selectedBoxes.length} از {MAX_BOXES} انتخاب شده</span>
           </div>
-          <div className="grid grid-cols-4 gap-2">
-            {timeSlots.map((time) => {
-              const isSelected = selectedBoxes.includes(time);
-              return (
-                <button
-                  key={time}
-                  onClick={() => toggleBox(time)}
-                  className={`p-2 rounded-lg text-sm border transition-colors ${
-                    isSelected
-                      ? 'bg-black text-white border-black'
-                      : 'hover:border-gray-400'
-                  }`}
-                >
-                  {time}
-                </button>
-              );
-            })}
-          </div>
+          <DayBoxGrid
+            boxMinutes={boxMinutes}
+            busyTimes={busyTimes}
+            selected={selectedBoxes}
+            onToggle={toggleBox}
+          />
         </div>
       )}
 

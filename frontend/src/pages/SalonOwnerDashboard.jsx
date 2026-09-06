@@ -4,7 +4,7 @@ import { bookingApi } from '../api/bookings';
 import { stylistApi } from '../api/stylists';
 import { chairApi } from '../api/chairs';
 import { fileUrl } from '../api/axiosConfig';
-import LocationPicker from '../components/LocationPicker';
+import SalonForm from '../components/SalonForm';
 import BookingList from '../components/BookingList';
 import { Plus, Settings, Users, Calendar, Armchair, ImagePlus } from 'lucide-react';
 
@@ -24,6 +24,9 @@ export default function SalonOwnerDashboard() {
     lat: TEHRAN.lat,
     lng: TEHRAN.lng,
   });
+
+  const [editingSalonId, setEditingSalonId] = useState('');
+  const [editSalon, setEditSalon] = useState(null);
 
   const [selectedSalonId, setSelectedSalonId] = useState('');
   const [stylists, setStylists] = useState([]);
@@ -157,6 +160,40 @@ export default function SalonOwnerDashboard() {
     }
   };
 
+  const handleEditClick = (salon) => {
+    setEditingSalonId(salon._id);
+    setEditSalon({
+      name: salon.name,
+      address: salon.address,
+      phone: salon.phone,
+      description: salon.description || '',
+      management_mode: salon.management_mode,
+      min_booking_interval: salon.min_booking_interval,
+      lng: salon.location?.coordinates?.[0] ?? TEHRAN.lng,
+      lat: salon.location?.coordinates?.[1] ?? TEHRAN.lat,
+    });
+  };
+
+  const handleUpdateSalon = async (e) => {
+    e.preventDefault();
+    try {
+      await salonApi.update(editingSalonId, {
+        name: editSalon.name,
+        address: editSalon.address,
+        phone: editSalon.phone,
+        description: editSalon.description,
+        management_mode: editSalon.management_mode,
+        min_booking_interval: Number(editSalon.min_booking_interval),
+        location: { type: 'Point', coordinates: [editSalon.lng, editSalon.lat] },
+      });
+      setEditingSalonId('');
+      setEditSalon(null);
+      loadSalons();
+    } catch (err) {
+      alert('خطا در بروزرسانی آرایشگاه');
+    }
+  };
+
   const handleCreateSalon = async (e) => {
     e.preventDefault();
     try {
@@ -197,79 +234,13 @@ export default function SalonOwnerDashboard() {
       {showCreateForm && (
         <div className="border rounded-xl p-6 mb-6 bg-gray-50">
           <h2 className="text-lg font-medium mb-4">ثبت آرایشگاه جدید</h2>
-          <form onSubmit={handleCreateSalon} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input
-              type="text"
-              placeholder="نام آرایشگاه"
-              value={newSalon.name}
-              onChange={(e) => setNewSalon({ ...newSalon, name: e.target.value })}
-              className="px-4 py-2 border rounded-lg"
-              required
-            />
-            <input
-              type="text"
-              placeholder="آدرس"
-              value={newSalon.address}
-              onChange={(e) => setNewSalon({ ...newSalon, address: e.target.value })}
-              className="px-4 py-2 border rounded-lg"
-              required
-            />
-            <input
-              type="text"
-              placeholder="تلفن"
-              value={newSalon.phone}
-              onChange={(e) => setNewSalon({ ...newSalon, phone: e.target.value })}
-              className="px-4 py-2 border rounded-lg"
-              required
-            />
-            <select
-              value={newSalon.management_mode}
-              onChange={(e) => setNewSalon({ ...newSalon, management_mode: e.target.value })}
-              className="px-4 py-2 border rounded-lg"
-            >
-              <option value="chair_based">مدیریت صندلی‌محور</option>
-              <option value="stylist_based">مدیریت آرایشگرمحور</option>
-            </select>
-            <div>
-              <label className="block text-sm font-medium mb-1">اندازه هر بازه زمانی نوبت‌دهی</label>
-              <select
-                value={newSalon.min_booking_interval}
-                onChange={(e) => setNewSalon({ ...newSalon, min_booking_interval: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg"
-              >
-                <option value={15}>۱۵ دقیقه</option>
-                <option value={30}>۳۰ دقیقه</option>
-                <option value={60}>۶۰ دقیقه</option>
-              </select>
-            </div>
-            <textarea
-              placeholder="توضیحات"
-              value={newSalon.description}
-              onChange={(e) => setNewSalon({ ...newSalon, description: e.target.value })}
-              className="px-4 py-2 border rounded-lg md:col-span-2 resize-none"
-              rows={3}
-            />
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-2">موقعیت روی نقشه (برای انتخاب کلیک کنید)</label>
-              <LocationPicker
-                lat={newSalon.lat}
-                lng={newSalon.lng}
-                onChange={(lat, lng) => setNewSalon({ ...newSalon, lat, lng })}
-              />
-            </div>
-            <div className="md:col-span-2 flex gap-2">
-              <button type="submit" className="px-4 py-2 bg-black text-white rounded-lg">
-                ثبت
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreateForm(false)}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-100"
-              >
-                انصراف
-              </button>
-            </div>
-          </form>
+          <SalonForm
+            value={newSalon}
+            onChange={setNewSalon}
+            onSubmit={handleCreateSalon}
+            onCancel={() => setShowCreateForm(false)}
+            submitLabel="ثبت"
+          />
         </div>
       )}
 
@@ -301,51 +272,70 @@ export default function SalonOwnerDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {salons.map((salon) => (
             <div key={salon._id} className="border rounded-xl p-4">
-              <div className="flex justify-between items-start mb-2">
-                <h3 className="font-medium text-lg">{salon.name}</h3>
-                <span className={`text-xs px-2 py-0.5 rounded ${
-                  salon.status === 'active' ? 'bg-green-100 text-green-700' :
-                  salon.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-red-100 text-red-700'
-                }`}>
-                  {salon.status === 'active' ? 'فعال' : salon.status === 'pending' ? 'در انتظار' : 'غیرفعال'}
-                </span>
-              </div>
-              <p className="text-sm text-gray-600 mb-2">{salon.address}</p>
-              <p className="text-sm text-gray-500 mb-3">{salon.description}</p>
-
-              <div className="flex gap-2 flex-wrap mb-3">
-                {salon.images?.map((img, i) => (
-                  <img
-                    key={i}
-                    src={fileUrl(img)}
-                    alt=""
-                    className="w-120 h-20 object-cover rounded-lg border"
+              {editingSalonId === salon._id ? (
+                <>
+                  <h3 className="font-medium text-lg mb-3">ویرایش {salon.name}</h3>
+                  <SalonForm
+                    value={editSalon}
+                    onChange={setEditSalon}
+                    onSubmit={handleUpdateSalon}
+                    onCancel={() => { setEditingSalonId(''); setEditSalon(null); }}
+                    submitLabel="ذخیره تغییرات"
                   />
-                ))}
-              </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-medium text-lg">{salon.name}</h3>
+                    <span className={`text-xs px-2 py-0.5 rounded ${
+                      salon.status === 'active' ? 'bg-green-100 text-green-700' :
+                      salon.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {salon.status === 'active' ? 'فعال' : salon.status === 'pending' ? 'در انتظار' : 'غیرفعال'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-2">{salon.address}</p>
+                  <p className="text-sm text-gray-500 mb-1">{salon.description}</p>
+                  <p className="text-xs text-gray-400 mb-3">بازه نوبت‌دهی: {salon.min_booking_interval} دقیقه</p>
 
-              <div className="flex gap-2 flex-wrap">
-                <button className="text-sm px-3 py-1 border rounded-lg hover:bg-gray-50">
-                  ویرایش
-                </button>
-                <button
-                  onClick={() => { setSelectedSalonId(salon._id); setActiveTab('chairs'); }}
-                  className="text-sm px-3 py-1 border rounded-lg hover:bg-gray-50"
-                >
-                  مدیریت صندلی‌ها
-                </button>
-                <label className="flex items-center gap-1 text-sm px-3 py-1 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <ImagePlus className="w-3.5 h-3.5" />
-                  افزودن عکس
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => handleUploadSalonImage(salon._id, e.target.files[0])}
-                  />
-                </label>
-              </div>
+                  <div className="flex gap-2 flex-wrap mb-3">
+                    {salon.images?.map((img, i) => (
+                      <img
+                        key={i}
+                        src={fileUrl(img)}
+                        alt=""
+                        className="w-16 h-16 object-cover rounded-lg border"
+                      />
+                    ))}
+                  </div>
+
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => handleEditClick(salon)}
+                      className="text-sm px-3 py-1 border rounded-lg hover:bg-gray-50"
+                    >
+                      ویرایش
+                    </button>
+                    <button
+                      onClick={() => { setSelectedSalonId(salon._id); setActiveTab('chairs'); }}
+                      className="text-sm px-3 py-1 border rounded-lg hover:bg-gray-50"
+                    >
+                      مدیریت صندلی‌ها
+                    </button>
+                    <label className="flex items-center gap-1 text-sm px-3 py-1 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                      <ImagePlus className="w-3.5 h-3.5" />
+                      افزودن عکس
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleUploadSalonImage(salon._id, e.target.files[0])}
+                      />
+                    </label>
+                  </div>
+                </>
+              )}
             </div>
           ))}
           {salons.length === 0 && (

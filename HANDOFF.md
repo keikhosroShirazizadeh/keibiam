@@ -76,6 +76,10 @@ that's the convention the frontend expects throughout.
 - `bookings.py` — `POST /bookings/` (single booking; customer, server
   computes `end_time`/`total_price` from the selected services),
   `POST /bookings/bulk` (customer; the slot-box flow — see below),
+  `GET /bookings/salon/{salon_id}/availability?date=` (public, no auth —
+  which boxes are already `confirmed`-busy on a given day; `pending`
+  requests don't count as busy, since several customers can request the
+  same box and it's up to the owner/stylist which one gets confirmed),
   `GET /bookings/me`, `GET /bookings/salon/{salon_id}` (owner; joins in
   service names and customer name/phone for display),
   `GET /bookings/stylist/me` (any user; empty list if they have no
@@ -166,27 +170,41 @@ required).
   exports `fileUrl()` to resolve `/uploads/...` paths against the backend
   origin), `salons.js`, `bookings.js`, `services.js`, `stylists.js`,
   `chairs.js`, `profile.js`
+- `components/DayBoxGrid.jsx` — shared read-only/interactive day view:
+  renders one day (08:00–24:00, hardcoded range) divided into
+  `boxMinutes`-sized boxes, with busy boxes struck through and
+  unselectable. Exports `buildDayBoxes(boxMinutes)` too. Read-only preview
+  when `onToggle` is omitted (`SalonDetail`); interactive multi-select
+  when provided (`BookingPage`).
+- `components/SalonForm.jsx` — the salon field set (name/address/phone/
+  management_mode/min_booking_interval/description/map location), shared
+  by `SalonOwnerDashboard`'s create-salon form and its per-card edit form
+  so the two can't drift out of sync.
 - `components/LocationPicker.jsx` — `react-leaflet` + OpenStreetMap tiles
-  (no API key needed), click-to-place-marker map; used by the salon
-  creation form
+  (no API key needed), click-to-place-marker map; used inside `SalonForm`
 - `components/BookingList.jsx` — shared by `SalonOwnerDashboard`'s
   "bookings" tab and `StylistDashboard`: renders a booking's date/time/
   services/customer/price/status and the status-appropriate action
   buttons (pending → confirm/reject, confirmed → complete/cancel,
   cancel_requested → confirm the cancellation), calling back with
   `onStatusChange(bookingId, newStatus)`
-- **Pages**: `Home` (salon browse grid), `SalonDetail` (service picker →
-  hands off to booking), `BookingPage` (multi-select time-box grid sized
-  by the salon's `min_booking_interval`, optional chair/stylist pick per
-  the salon's management mode, submits via `POST /bookings/bulk` — see
-  Booking model above), `Login`, `Register`, `Profile` (avatar upload,
-  any logged-in user), `AdminPanel` (salon approval queue, approve/reject
-  wired to the real admin endpoint), `SalonOwnerDashboard` (create salons
-  with a map-picked location and a slot-interval selector; each salon
-  card shows its photo gallery with an upload button; real "add a barber"
-  form + stylist list on the stylists tab; "Chairs" tab; "bookings" tab
-  now a real `BookingList` per salon), `StylistDashboard` (now a real
-  `BookingList` of bookings assigned to that stylist, via
+- **Pages**: `Home` (salon browse grid), `SalonDetail` (shows a
+  `DayBoxGrid` preview of today the moment the salon loads, using
+  `GET .../availability` so it reflects real confirmed bookings, not just
+  a decorative grid; then service picker → hands off to booking),
+  `BookingPage` (interactive `DayBoxGrid`, busy boxes disabled, refetches
+  availability whenever the selected date changes; optional chair/stylist
+  pick per the salon's management mode; submits via `POST /bookings/bulk`
+  — see Booking model above), `Login`, `Register`, `Profile` (avatar
+  upload, any logged-in user), `AdminPanel` (salon approval queue,
+  approve/reject wired to the real admin endpoint), `SalonOwnerDashboard`
+  (create salons via `SalonForm`; each card's "ویرایش" button now opens
+  that same `SalonForm` inline, pre-filled, submitting to
+  `PUT /salons/{id}` — the strategy, including `min_booking_interval`, is
+  editable after creation; photo gallery with upload button; real
+  "add a barber" form + stylist list on the stylists tab; "Chairs" tab;
+  "bookings" tab a real `BookingList` per salon), `StylistDashboard`
+  (a real `BookingList` of bookings assigned to that stylist, via
   `GET /bookings/stylist/me`)
 
 ## Known remaining gaps
@@ -196,24 +214,30 @@ Not blockers to running the app, but real gaps to close next:
 - **No booking-conflict checking.** `Stylist.work_schedules` and existing
   bookings aren't checked against a new booking's time slot — a customer
   (or several different customers) can request the same box repeatedly;
-  nothing stops the owner from confirming overlapping bookings either.
+  nothing stops the owner from confirming overlapping bookings either
+  (the `availability` endpoint only hides *already-confirmed* boxes from
+  the customer's grid — it doesn't stop the owner from confirming a
+  second booking into an already-busy one server-side).
 - **Box length vs. service duration isn't reconciled.** Each booking box
   always lasts exactly `min_booking_interval` regardless of the selected
   services' actual total duration — see Booking model above.
+- **The day-grid's 08:00–24:00 range and business hours generally are
+  hardcoded** — `DayBoxGrid.jsx`'s `DAY_START_HOUR`/`DAY_END_HOUR`
+  constants, not a per-salon setting. A salon that's actually only open
+  10–18 still shows the full 08:00–24:00 grid.
 - **No chair-based booking *conflict* UI for customers** — chair
   *management* exists (owner dashboard's "Chairs" tab), and `BookingPage`
-  now lets a customer optionally pick a chair/stylist, but nothing shows
-  a chair's or stylist's existing bookings to help the customer avoid
-  picking an already-busy one — they're just picking blind and relying on
-  the owner/stylist to reject conflicts.
+  now lets a customer optionally pick a chair/stylist, but availability
+  is tracked per salon+date only, not per chair or per stylist — two
+  customers could each get a box confirmed for the same time at the same
+  salon on different chairs and neither would see the other as busy.
 - **`StylistDashboard`** still has no working-schedule management (only a
   booking list now).
 - **Self-registration as `super_admin`** — see Roles above.
 - **No edit/delete for salon photos or chairs** — you can add a photo to a
   salon's gallery or set a chair's photo, but there's no UI (or endpoint)
-  to remove one, and the salon card's "ویرایش" (edit) button is still
-  dead — no edit-salon form exists yet, so location/name/etc. can't be
-  changed after creation, only appended to (photos) or approved (admin).
+  to remove one. Editing the salon's own fields (name/address/strategy/
+  location) now works; photos are still append-only.
 
 ## Running locally
 
@@ -492,3 +516,45 @@ and a customer can cancel their own confirmed booking (200).
 
 Commit: `Add slot-box booking model with independent per-box accept/
 reject`.
+
+### Round 8 — day-grid preview on the salon page, editable time strategy
+Requested: when a customer clicks into a salon they should immediately
+see the whole day (08:00–midnight) divided into boxes; and the owner
+should be able to edit a salon's booking-interval strategy after
+creation, not just set it once at creation time.
+
+- New public `GET /bookings/salon/{id}/availability?date=` returns which
+  boxes are already `confirmed`-busy for a day. Deliberately excludes
+  `pending` bookings from "busy" — several customers can request the same
+  box, and it's the owner/stylist's call which one gets confirmed, so
+  marking a pending request as "busy" would incorrectly block other
+  customers from even trying.
+- Extracted `components/DayBoxGrid.jsx` (used to be inline in
+  `BookingPage`) with a read-only mode (no `onToggle`) for `SalonDetail`'s
+  new "برنامه امروز" (today's schedule) section, and kept the interactive
+  multi-select mode for `BookingPage`, which now also disables busy boxes
+  and refetches availability whenever the selected date changes. Range
+  extended from the old hardcoded 9–21 to 8–24 per the request.
+- `PUT /salons/{id}` already existed and already accepted any field, so
+  no backend change was needed for editing — only that the frontend never
+  used it for anything but admin status changes. Extracted the salon
+  field set into `components/SalonForm.jsx` (shared by create and edit,
+  so they can't drift out of sync); the salon card's "ویرایش" button
+  (dead since Round 1) now opens that form inline, pre-filled from the
+  salon's current data including `min_booking_interval`.
+- Collateral fix: `SalonOwnerDashboard.jsx` had a stray `w-120` Tailwind
+  class (not a real utility - the config has no custom spacing past the
+  default `w-96`) on the salon photo thumbnails, flagged but left alone
+  in the last two rounds since it was outside what was asked each time.
+  This round's edit rewrote that exact block anyway, so fixed it back to
+  `w-16 h-16` rather than leave known-broken CSS in code already being
+  rewritten.
+
+Verified live against the real dev database with throwaway accounts
+(cleaned up after): availability endpoint returns empty before any
+booking exists; a bulk request's `pending` boxes correctly don't appear
+as busy; confirming one of them makes exactly that box (and only that
+box) show up in `busy_times`; edited a salon's name and interval via
+`PUT /salons/{id}` and confirmed both took effect on refetch.
+
+Commit: `Add day-grid availability preview and salon editing`.
