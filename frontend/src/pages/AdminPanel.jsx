@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { salonApi } from '../api/salons';
 import { useAuthStore } from '../store/authStore';
-import { Shield, Eye, EyeOff, CheckCircle, XCircle } from 'lucide-react';
+import { Shield, Eye, EyeOff, CheckCircle, XCircle, Ban, Power } from 'lucide-react';
 
 export default function AdminPanel() {
   const { isSuperAdmin } = useAuthStore();
@@ -125,6 +125,24 @@ export default function AdminPanel() {
                           <XCircle className="w-4 h-4" />
                         </button>
                       </>
+                    )}
+                    {salon.status === 'active' && isSuperAdmin() && (
+                      <button
+                        onClick={() => handleStatusChange(salon._id, 'inactive', false)}
+                        className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                        title="غیرفعال کردن"
+                      >
+                        <Ban className="w-4 h-4" />
+                      </button>
+                    )}
+                    {salon.status === 'inactive' && isSuperAdmin() && (
+                      <button
+                        onClick={() => handleStatusChange(salon._id, 'active', true)}
+                        className="p-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
+                        title="فعال کردن"
+                      >
+                        <Power className="w-4 h-4" />
+                      </button>
                     )}
                     <button className="text-xs px-2 py-1 border rounded hover:bg-gray-100">
                       جزئیات
