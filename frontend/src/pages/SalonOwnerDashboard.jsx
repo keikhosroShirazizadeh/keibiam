@@ -5,6 +5,7 @@ import { stylistApi } from '../api/stylists';
 import { chairApi } from '../api/chairs';
 import { fileUrl } from '../api/axiosConfig';
 import LocationPicker from '../components/LocationPicker';
+import BookingList from '../components/BookingList';
 import { Plus, Settings, Users, Calendar, Armchair, ImagePlus } from 'lucide-react';
 
 const TEHRAN = { lat: 35.6892, lng: 51.389 };
@@ -19,6 +20,7 @@ export default function SalonOwnerDashboard() {
     phone: '',
     description: '',
     management_mode: 'chair_based',
+    min_booking_interval: 15,
     lat: TEHRAN.lat,
     lng: TEHRAN.lng,
   });
@@ -40,6 +42,8 @@ export default function SalonOwnerDashboard() {
   const [chairError, setChairError] = useState('');
   const [newChair, setNewChair] = useState({ name: '', description: '' });
 
+  const [bookings, setBookings] = useState([]);
+
   useEffect(() => {
     loadSalons();
   }, []);
@@ -56,6 +60,9 @@ export default function SalonOwnerDashboard() {
     }
     if (activeTab === 'chairs' && selectedSalonId) {
       loadChairs(selectedSalonId);
+    }
+    if (activeTab === 'bookings' && selectedSalonId) {
+      loadBookings(selectedSalonId);
     }
   }, [activeTab, selectedSalonId]);
 
@@ -83,6 +90,24 @@ export default function SalonOwnerDashboard() {
       setChairs(res.data);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const loadBookings = async (salonId) => {
+    try {
+      const res = await bookingApi.getBySalon(salonId);
+      setBookings(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleBookingStatusChange = async (bookingId, newStatus) => {
+    try {
+      await bookingApi.updateStatus(bookingId, newStatus);
+      loadBookings(selectedSalonId);
+    } catch (err) {
+      alert('خطا در بروزرسانی نوبت');
     }
   };
 
@@ -141,12 +166,14 @@ export default function SalonOwnerDashboard() {
         phone: newSalon.phone,
         description: newSalon.description,
         management_mode: newSalon.management_mode,
+        min_booking_interval: Number(newSalon.min_booking_interval),
         location: { type: 'Point', coordinates: [newSalon.lng, newSalon.lat] },
       });
       setShowCreateForm(false);
       setNewSalon({
         name: '', address: '', phone: '', description: '',
-        management_mode: 'chair_based', lat: TEHRAN.lat, lng: TEHRAN.lng,
+        management_mode: 'chair_based', min_booking_interval: 15,
+        lat: TEHRAN.lat, lng: TEHRAN.lng,
       });
       loadSalons();
     } catch (err) {
@@ -203,6 +230,18 @@ export default function SalonOwnerDashboard() {
               <option value="chair_based">مدیریت صندلی‌محور</option>
               <option value="stylist_based">مدیریت آرایشگرمحور</option>
             </select>
+            <div>
+              <label className="block text-sm font-medium mb-1">اندازه هر بازه زمانی نوبت‌دهی</label>
+              <select
+                value={newSalon.min_booking_interval}
+                onChange={(e) => setNewSalon({ ...newSalon, min_booking_interval: e.target.value })}
+                className="w-full px-4 py-2 border rounded-lg"
+              >
+                <option value={15}>۱۵ دقیقه</option>
+                <option value={30}>۳۰ دقیقه</option>
+                <option value={60}>۶۰ دقیقه</option>
+              </select>
+            </div>
             <textarea
               placeholder="توضیحات"
               value={newSalon.description}
@@ -281,7 +320,7 @@ export default function SalonOwnerDashboard() {
                     key={i}
                     src={fileUrl(img)}
                     alt=""
-                    className="w-16 h-16 object-cover rounded-lg border"
+                    className="w-120 h-20 object-cover rounded-lg border"
                   />
                 ))}
               </div>
@@ -546,8 +585,31 @@ export default function SalonOwnerDashboard() {
       )}
 
       {activeTab === 'bookings' && (
-        <div className="text-center py-12 text-gray-500">
-          مدیریت نوبت‌ها (بخش کامل در نسخه نهایی)
+        <div>
+          {salons.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              ابتدا یک آرایشگاه ثبت کنید
+            </div>
+          ) : (
+            <>
+              <div className="mb-4">
+                {salons.length > 1 ? (
+                  <select
+                    value={selectedSalonId}
+                    onChange={(e) => setSelectedSalonId(e.target.value)}
+                    className="px-4 py-2 border rounded-lg"
+                  >
+                    {salons.map((s) => (
+                      <option key={s._id} value={s._id}>{s.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-sm text-gray-600">{salons[0]?.name}</span>
+                )}
+              </div>
+              <BookingList bookings={bookings} onStatusChange={handleBookingStatusChange} />
+            </>
+          )}
         </div>
       )}
     </div>

@@ -1,10 +1,11 @@
 # Project Handoff — Salon Booking System
 
-Status snapshot as of 2026-09-05. This document exists to bring a new
+Status snapshot as of 2026-09-06. This document exists to bring a new
 contributor (or a future session) up to speed on what exists, what changed
 and why, and where to start. The app is runnable end-to-end (register →
 create salon → admin approval → create service → owner adds a barber →
-customer books → owner confirms), verified live over HTTP.
+customer requests multiple time-slot boxes → owner/stylist accepts or
+rejects each independently), verified live over HTTP.
 
 ## What this is
 
@@ -72,11 +73,56 @@ that's the convention the frontend expects throughout.
   see history below for why), `POST /stylists/` (link an existing
   stylist-role user to more salons), `GET /stylists/salon/{salon_id}`
   (public; joins in the linked user's name/email/phone)
-- `bookings.py` — create (customer; server computes `end_time` and
-  `total_price` from the selected services), `GET /bookings/me`,
-  `GET /bookings/salon/{salon_id}` (owner), `PUT /bookings/{id}/status`
+- `bookings.py` — `POST /bookings/` (single booking; customer, server
+  computes `end_time`/`total_price` from the selected services),
+  `POST /bookings/bulk` (customer; the slot-box flow — see below),
+  `GET /bookings/me`, `GET /bookings/salon/{salon_id}` (owner; joins in
+  service names and customer name/phone for display),
+  `GET /bookings/stylist/me` (any user; empty list if they have no
+  stylist profile, otherwise their assigned bookings, same joined shape),
+  `PUT /bookings/{id}/status` (customer/owner/assigned stylist — see
+  Booking status permissions below)
 - `logs.py` — `GET /logs/` (admin-only) — queries today's transaction log,
   filterable by `collection`/`action`/`actor_id`
+
+## Booking model: slot boxes + independent per-box acceptance
+
+A salon's `min_booking_interval` (already existed on the `Salon` model,
+15/30/60 minutes, now settable in the salon creation form) defines the
+size of one bookable "box." A customer can select **multiple** boxes in
+one visit to `BookingPage`; `POST /bookings/bulk` creates one fully
+independent `Booking` document per selected box (same `service_ids`,
+`total_price`, `stylist_id`/`chair_id`, all sharing one `group_id` so
+they're traceable as one customer request), each starting life as
+`pending`. There is no merging or "this batch succeeds/fails together"
+behavior — the owner or the assigned stylist reviews each box on its own
+and can confirm any subset: all of them, some of them, or none. This
+directly implements the request: "customer reserves 2 boxes, salon owner
+can accept 1, 2, or none of them."
+
+Each box's `end_time` is `start_time + min_booking_interval` — **not**
+the sum of the selected services' `duration_minutes`. A service longer
+than one box currently just gets attached to a single box-length booking;
+there's no enforcement that a customer picks enough contiguous boxes to
+cover a long service's real duration. That's a conscious v1 simplification,
+not an oversight — flagged again under Known gaps.
+
+### Booking status permissions (`PUT /bookings/{id}/status`)
+
+Three actors can touch a booking's status, each restricted to different
+transitions:
+- **Customer** (`booking.customer_id` matches): only
+  `cancelled_by_customer` or `cancel_requested`.
+- **Salon owner** (owns the salon the booking belongs to) or **assigned
+  stylist** (`booking.stylist_id` resolves to a `Stylist` whose `user_id`
+  matches): `confirmed`, `rejected`, `completed`, `cancelled_by_stylist`.
+  The stylist match requires a DB lookup since `booking.stylist_id` is a
+  `Stylist` document id, not a `User` id.
+- Anyone else: 403.
+
+This didn't exist before this round — the old endpoint let the customer
+*or* the owner set literally any status with no transition restriction,
+and didn't let a stylist touch bookings at all (only the owner could).
 
 ## File uploads (`backend/app/utils/file_storage.py`)
 
@@ -123,34 +169,45 @@ required).
 - `components/LocationPicker.jsx` — `react-leaflet` + OpenStreetMap tiles
   (no API key needed), click-to-place-marker map; used by the salon
   creation form
+- `components/BookingList.jsx` — shared by `SalonOwnerDashboard`'s
+  "bookings" tab and `StylistDashboard`: renders a booking's date/time/
+  services/customer/price/status and the status-appropriate action
+  buttons (pending → confirm/reject, confirmed → complete/cancel,
+  cancel_requested → confirm the cancellation), calling back with
+  `onStatusChange(bookingId, newStatus)`
 - **Pages**: `Home` (salon browse grid), `SalonDetail` (service picker →
-  hands off to booking), `BookingPage` (date/time picker), `Login`,
-  `Register`, `Profile` (avatar upload, any logged-in user), `AdminPanel`
-  (salon approval queue, approve/reject wired to the real admin endpoint),
-  `SalonOwnerDashboard` (create salons with a map-picked location; each
-  salon card shows its photo gallery with an upload button; real
-  "add a barber" form + stylist list on the stylists tab; "Chairs" tab —
-  create a chair, upload its photo; bookings tab still placeholder text),
-  `StylistDashboard` (placeholder)
+  hands off to booking), `BookingPage` (multi-select time-box grid sized
+  by the salon's `min_booking_interval`, optional chair/stylist pick per
+  the salon's management mode, submits via `POST /bookings/bulk` — see
+  Booking model above), `Login`, `Register`, `Profile` (avatar upload,
+  any logged-in user), `AdminPanel` (salon approval queue, approve/reject
+  wired to the real admin endpoint), `SalonOwnerDashboard` (create salons
+  with a map-picked location and a slot-interval selector; each salon
+  card shows its photo gallery with an upload button; real "add a barber"
+  form + stylist list on the stylists tab; "Chairs" tab; "bookings" tab
+  now a real `BookingList` per salon), `StylistDashboard` (now a real
+  `BookingList` of bookings assigned to that stylist, via
+  `GET /bookings/stylist/me`)
 
 ## Known remaining gaps
 
 Not blockers to running the app, but real gaps to close next:
 
 - **No booking-conflict checking.** `Stylist.work_schedules` and existing
-  bookings aren't checked against a new booking's time slot — double
-  booking is currently possible.
-- **`SalonOwnerDashboard`'s "bookings" tab** is still placeholder text —
-  no UI yet for viewing/confirming bookings from the owner side (the
-  backend endpoints exist: `bookings.py`'s `GET /bookings/salon/{id}` and
-  `PUT /{id}/status` — just not wired into the dashboard UI).
-- **`StylistDashboard`** is a placeholder — no schedule management or
-  booking view for stylists yet.
-- **No chair-based booking UI for customers** — chair *management* now
-  exists (owner dashboard's "Chairs" tab: create a chair, upload its
-  photo), but `SalonDetail`/`BookingPage` still don't let a customer pick
-  a chair when booking at a `chair_based` salon (the `chair_id` field
-  exists on `Booking`, just unused by the booking UI).
+  bookings aren't checked against a new booking's time slot — a customer
+  (or several different customers) can request the same box repeatedly;
+  nothing stops the owner from confirming overlapping bookings either.
+- **Box length vs. service duration isn't reconciled.** Each booking box
+  always lasts exactly `min_booking_interval` regardless of the selected
+  services' actual total duration — see Booking model above.
+- **No chair-based booking *conflict* UI for customers** — chair
+  *management* exists (owner dashboard's "Chairs" tab), and `BookingPage`
+  now lets a customer optionally pick a chair/stylist, but nothing shows
+  a chair's or stylist's existing bookings to help the customer avoid
+  picking an already-busy one — they're just picking blind and relying on
+  the owner/stylist to reject conflicts.
+- **`StylistDashboard`** still has no working-schedule management (only a
+  booking list now).
 - **Self-registration as `super_admin`** — see Roles above.
 - **No edit/delete for salon photos or chairs** — you can add a photo to a
   salon's gallery or set a chair's photo, but there's no UI (or endpoint)
@@ -378,3 +435,60 @@ and a non-image file correctly rejected with 400.
 
 Commit: `Add profile pictures, salon photo galleries, map location
 picker, chair photos`.
+
+### Round 7 — customers couldn't book; slot-box reservation model
+Reported: "customer cannot make reservations," plus a request for salon
+owners to define a reservation strategy — configurable time-box size
+(15/30/60 min), customer selects multiple boxes, owner or hairdresser
+accepts any subset.
+
+Investigation first: called `POST /bookings/` directly with the exact
+payload shape `BookingPage.jsx` built (including `stylist_id`/`chair_id`
+omitted the way JS `undefined` values get dropped by `JSON.stringify`) —
+it succeeded. So the raw create-booking API was never broken. The real
+problem was the booking UI itself: `SalonDetail.jsx`'s "continue to
+booking" never set `stylistId`/`chairId` in the router state it handed
+to `BookingPage` — there was no UI to pick either — so those fields were
+always `undefined`, and `BookingPage` depended on fragile
+`useLocation().state` rather than fetching the salon itself. Functionally
+bookable, but with an incomplete, confusing flow — which is what
+"customer cannot make reservations" was describing.
+
+Rebuilt around the slot-box model (confirmed the design with the user
+first: each selected box is an independent request, not a merged span —
+see Booking model above):
+- `Salon.min_booking_interval` (already existed, unused) is now settable
+  in the salon creation form.
+- New `POST /bookings/bulk` + `BulkBookingCreate` model: one call, N
+  independent `pending` bookings, one per selected box, sharing a
+  `group_id`.
+- `PUT /bookings/{id}/status` reworked: added stylist authorization
+  (resolves `booking.stylist_id` → `Stylist.user_id`, previously only the
+  owner could act), and restricted which status each role can set
+  (customer: cancel only; owner/stylist: confirm/reject/complete/cancel)
+  — previously either party could set *any* status with no restriction.
+- `GET /bookings/salon/{id}` and the new `GET /bookings/stylist/me` now
+  join in service names and customer name/phone, since a booking only
+  ever stored `service_ids`/`customer_id`.
+- `BookingPage.jsx` rewritten: fetches the salon directly (no longer
+  relies solely on router state), renders a multi-select box grid sized
+  by the salon's interval, lets the customer optionally pick a chair or
+  stylist depending on the salon's `management_mode`, submits via the
+  bulk endpoint.
+- New shared `BookingList.jsx` component, used to build out two
+  previously-placeholder screens: `SalonOwnerDashboard`'s "bookings" tab
+  and `StylistDashboard` (which had literally nothing but a welcome
+  message before).
+
+Verified live end-to-end with throwaway accounts against the real dev
+database (cleaned up after): customer requested 2 boxes for a
+stylist-based salon → owner's salon view showed both with joined service/
+customer info → owner confirmed one and rejected the other → customer's
+own `/bookings/me` correctly showed one `confirmed` and one `rejected` →
+the assigned stylist's `/bookings/stylist/me` showed the same and could
+independently confirm a third booking → verified a customer cannot
+self-confirm (403), a stranger cannot touch someone else's booking (403),
+and a customer can cancel their own confirmed booking (200).
+
+Commit: `Add slot-box booking model with independent per-box accept/
+reject`.
