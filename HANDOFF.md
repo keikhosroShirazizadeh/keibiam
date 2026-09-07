@@ -80,21 +80,29 @@ that's the convention the frontend expects throughout.
 - `stylists.py` — `POST /stylists/salon/{salon_id}/create-account` (owner;
   creates the barber's login **and** their stylist profile together —
   see history below for why), `POST /stylists/` (link an existing
-  stylist-role user to more salons), `GET /stylists/salon/{salon_id}`
+  stylist-role user to more salons), `GET /stylists/me` (any user; the
+  caller's own stylist profile plus linked salons resolved to id/name —
+  404 if they have no stylist profile), `GET /stylists/salon/{salon_id}`
   (public; joins in the linked user's name/email/phone)
 - `bookings.py` — `POST /bookings/` (single booking; customer, server
   computes `end_time`/`total_price` from the selected services),
-  `POST /bookings/bulk` (customer; the slot-box flow — see below),
-  `GET /bookings/salon/{salon_id}/availability?date=` (public, no auth —
-  which boxes are already `confirmed`-busy on a given day; `pending`
-  requests don't count as busy, since several customers can request the
-  same box and it's up to the owner/stylist which one gets confirmed),
-  `GET /bookings/me`, `GET /bookings/salon/{salon_id}` (owner; joins in
-  service names and customer name/phone for display),
+  `POST /bookings/bulk` (up to 3 time boxes; a plain customer books for
+  themselves and each box starts `pending` — OR salon staff (the owning
+  owner, or a stylist linked to that salon) pass `customer_id` to book on
+  behalf of an existing customer, auto-`confirmed` — see Booking model
+  below), `GET /bookings/salon/{salon_id}/availability?date=` (public, no
+  auth — which boxes are already `confirmed`-busy on a given day;
+  `pending` requests don't count as busy, since several customers can
+  request the same box and it's up to the owner/stylist which one gets
+  confirmed), `GET /bookings/me`, `GET /bookings/salon/{salon_id}`
+  (owner; joins in service names and customer name/phone for display),
   `GET /bookings/stylist/me` (any user; empty list if they have no
   stylist profile, otherwise their assigned bookings, same joined shape),
   `PUT /bookings/{id}/status` (customer/owner/assigned stylist — see
   Booking status permissions below)
+- `users.py` — `GET /users/search?search=` (staff-only — owner/stylist/
+  admin; case-insensitive substring match against a customer's
+  full_name/phone) — lets staff find a customer to book on their behalf
 - `logs.py` — `GET /logs/` (admin-only) — queries today's transaction log,
   filterable by `collection`/`action`/`actor_id`
 
@@ -102,8 +110,8 @@ that's the convention the frontend expects throughout.
 
 A salon's `min_booking_interval` (already existed on the `Salon` model,
 15/30/60 minutes, now settable in the salon creation form) defines the
-size of one bookable "box." A customer can select **multiple** boxes in
-one visit to `BookingPage`; `POST /bookings/bulk` creates one fully
+size of one bookable "box." A customer can select **up to 3** boxes in
+one visit to `SalonDetail`; `POST /bookings/bulk` creates one fully
 independent `Booking` document per selected box (same `service_ids`,
 `total_price`, `stylist_id`/`chair_id`, all sharing one `group_id` so
 they're traceable as one customer request), each starting life as
@@ -111,7 +119,16 @@ they're traceable as one customer request), each starting life as
 behavior — the owner or the assigned stylist reviews each box on its own
 and can confirm any subset: all of them, some of them, or none. This
 directly implements the request: "customer reserves 2 boxes, salon owner
-can accept 1, 2, or none of them."
+can accept 1, 2, or none of them." (3 was a later, explicit cap — the
+model originally allowed up to 10; see Round 10.)
+
+**Staff-initiated bookings** (Round 10): the same `POST /bookings/bulk`
+endpoint, called by a salon owner or a stylist linked to that salon, with
+`customer_id` set to an existing customer's id (found via
+`GET /users/search`). Those boxes are created `confirmed` immediately
+rather than `pending` — there's no one else who needs to approve a
+booking staff created themselves. A plain customer calling without
+`customer_id` behaves exactly as before (books for themselves, `pending`).
 
 Each box's `end_time` is `start_time + min_booking_interval` — **not**
 the sum of the selected services' `duration_minutes`. A service longer
@@ -178,15 +195,30 @@ required).
   isStylist()/isCustomer()` role checks
 - `api/` — `axiosConfig.js` (injects the bearer token, logs out on 401,
   exports `fileUrl()` to resolve `/uploads/...` paths against the backend
-  origin), `salons.js`, `bookings.js`, `services.js`, `stylists.js`,
-  `chairs.js`, `profile.js` (`update()` for self-update, `uploadAvatar()`),
-  `admin.js` (`listUsers(role, search)`, `getUserDetail(userId)`)
+  origin), `salons.js`, `bookings.js` (`createBulk()` takes an optional
+  `customer_id` for staff bookings), `services.js`, `stylists.js`
+  (`getMe()` new in Round 10), `chairs.js`, `profile.js` (`update()` for
+  self-update, `uploadAvatar()`), `admin.js` (`listUsers(role, search)`,
+  `getUserDetail(userId)`), `users.js` (`searchCustomers(search)`, new in
+  Round 10 — staff-only customer lookup)
+- `utils/jalali.js` (Round 10) — wraps the `jalaali-js` package (note:
+  import its named exports, e.g. `import { toJalaali } from 'jalaali-js'`
+  — it has no default export, which fails silently under Node's CommonJS
+  `require()` interop but breaks the Vite/Rollup build outright; caught
+  this at build time, not runtime). `formatJalali(date)` converts a
+  Gregorian JS `Date` to `{ weekday, day, month, year }` Persian-language
+  display labels — purely cosmetic. The `Date` object and any ISO string
+  built from it (e.g. via `date-fns`'s `format(date, 'yyyy-MM-dd')`)
+  remain Gregorian throughout — that's what the backend stores and
+  expects; only the on-screen labels are Jalali.
+- `components/PersianDatePicker.jsx` (Round 10) — the next 90 days as a
+  button grid, Jalali-labeled via `utils/jalali.js`, Gregorian
+  `yyyy-MM-dd` as the actual selection value. Used by `SalonDetail` and
+  `BookForCustomerForm`.
 - `components/DayBoxGrid.jsx` — renders one day (08:00–24:00, hardcoded
   range) divided into `boxMinutes`-sized boxes, multi-select, busy boxes
   struck through and unselectable. Exports `buildDayBoxes(boxMinutes)`
-  too. Used only by `SalonDetail` now (see Round 9 — it used to also have
-  a read-only preview mode for a separate page; that mode no longer
-  exists since there's only one page now).
+  too. Used by `SalonDetail` and `BookForCustomerForm`.
 - `components/SalonForm.jsx` — the salon field set (name/address/phone/
   management_mode/min_booking_interval/description/map location), shared
   by `SalonOwnerDashboard`'s create-salon form and its per-card edit form
@@ -199,29 +231,41 @@ required).
   buttons (pending → confirm/reject, confirmed → complete/cancel,
   cancel_requested → confirm the cancellation), calling back with
   `onStatusChange(bookingId, newStatus)`
+- `components/BookForCustomerForm.jsx` (Round 10) — the staff-booking
+  form: debounced customer search (`GET /users/search`) → service
+  checkboxes → optional chair/stylist pick (skipped entirely when a
+  `fixedStylistId` prop is given, i.e. a stylist booking for their own
+  slot) → `PersianDatePicker` → `DayBoxGrid` (max 3 boxes) → notes →
+  submit via `bookingApi.createBulk` with `customer_id` set. Embedded as
+  a toggleable section in `SalonOwnerDashboard`'s bookings tab and in
+  `StylistDashboard`, not a standalone page.
 - **Pages**: `Home` (salon browse grid), `SalonDetail` (everything a
   customer needs to book, on one page: service checkboxes, optional
-  chair/stylist pick per the salon's management mode, date picker, an
-  interactive `DayBoxGrid` sized by `min_booking_interval` with real busy
-  boxes disabled — refetches `GET .../availability` whenever the date
-  changes — notes, submit via `POST /bookings/bulk`; see Round 9 for why
-  this used to be two pages), `Login`, `Register` (now also collects an
-  optional `national_code`), `Profile` (avatar upload plus an editable
-  full_name/national_code form, via `PUT /auth/me`), `AdminPanel` (two
-  top-level tabs: "آرایشگاه‌ها" — the original salon approval queue,
-  unchanged — and "کاربران", new in Round 9: role tabs
-  salon_owner/stylist/customer, a debounced name/phone/national_code
-  search, and a detail panel that shows a salon_owner's salons with
-  activate/deactivate wired to the same admin endpoint, or a stylist's
-  bio/specialties/linked salons), `SalonOwnerDashboard` (create salons
-  via `SalonForm`; each card's "ویرایش" button opens that same form
-  inline, pre-filled, submitting to `PUT /salons/{id}` — the strategy,
-  including `min_booking_interval`, is editable after creation; photo
-  gallery with upload button; real "add a barber" form (now also
-  collects `national_code`) + stylist list on the stylists tab; "Chairs"
-  tab; "bookings" tab a real `BookingList` per salon), `StylistDashboard`
-  (a real `BookingList` of bookings assigned to that stylist, via
-  `GET /bookings/stylist/me`)
+  chair/stylist pick per the salon's management mode, `PersianDatePicker`,
+  an interactive `DayBoxGrid` (max 3 boxes) sized by `min_booking_interval`
+  with real busy boxes disabled — refetches `GET .../availability`
+  whenever the date changes — notes, submit via `POST /bookings/bulk`;
+  see Round 9 for why this used to be two pages), `Login`, `Register`
+  (now also collects an optional `national_code`), `Profile` (avatar
+  upload plus an editable full_name/national_code form, via
+  `PUT /auth/me`), `AdminPanel` (two top-level tabs: "آرایشگاه‌ها" — the
+  original salon approval queue, unchanged — and "کاربران", from Round 9:
+  role tabs salon_owner/stylist/customer, a debounced name/phone/
+  national_code search, and a detail panel that shows a salon_owner's
+  salons with activate/deactivate wired to the same admin endpoint, or a
+  stylist's bio/specialties/linked salons), `SalonOwnerDashboard` (create
+  salons via `SalonForm`; each card's "ویرایش" button opens that same
+  form inline, pre-filled, submitting to `PUT /salons/{id}` — the
+  strategy, including `min_booking_interval`, is editable after
+  creation; photo gallery with upload button; real "add a barber" form
+  (now also collects `national_code`) + stylist list on the stylists
+  tab; "Chairs" tab; "bookings" tab has a real `BookingList` per salon
+  plus, new in Round 10, a "رزرو برای مشتری" button that opens
+  `BookForCustomerForm`), `StylistDashboard` (a real `BookingList` of
+  bookings assigned to that stylist via `GET /bookings/stylist/me`; now
+  also fetches the stylist's own profile via `GET /stylists/me` to offer
+  a salon picker (if linked to more than one) and the same
+  "رزرو برای مشتری" flow, with `fixedStylistId` set to themselves)
 
 ## Known remaining gaps
 
@@ -233,7 +277,11 @@ Not blockers to running the app, but real gaps to close next:
   nothing stops the owner from confirming overlapping bookings either
   (the `availability` endpoint only hides *already-confirmed* boxes from
   the customer's grid — it doesn't stop the owner from confirming a
-  second booking into an already-busy one server-side).
+  second booking into an already-busy one server-side). This is sharper
+  since Round 10: a staff-created booking (`customer_id` set) is
+  auto-`confirmed` with **no availability check at all** — an owner could
+  double-book a box that's already confirmed for someone else with
+  nothing stopping them.
 - **Box length vs. service duration isn't reconciled.** Each booking box
   always lasts exactly `min_booking_interval` regardless of the selected
   services' actual total duration — see Booking model above.
@@ -635,3 +683,77 @@ the merged `SalonDetail` booking flow end-to-end with the exact payload
 the new single-page UI builds.
 
 Commit: `Merge booking flow into SalonDetail; add admin user browser`.
+
+### Round 10 — Persian calendar, 3-box cap, staff booking on behalf of a customer, and the actual 403 bug
+Four asks in one message: (1) show the calendar in Persian/Jalali to all
+users, (2) cap box selection at 1–3 instead of the prior unlimited-up-to-
+10, (3) let a salon owner or stylist create a reservation for a customer
+found by phone/name, (4) "there is a problem in reservation that gives
+403 error to customer, fix them too."
+
+Investigated (4) first rather than guessing: `POST /bookings/bulk` was
+still hard-locked to `Depends(require_customer)`, which 403s literally
+any caller whose role isn't exactly `customer` — including a salon owner
+or stylist trying to book someone in. That's the exact same restriction
+(3) needed lifted. One fix serves both: the endpoint now accepts
+`get_current_active_user` and branches — a plain customer behaves
+exactly as before, while staff must pass `customer_id` and are verified
+against the salon (owner must own it; stylist must be linked to it via
+their `Stylist.salon_ids`) before the booking is created, auto-confirmed.
+
+Calendar: added `jalaali-js` (a small, well-established Gregorian↔Jalali
+arithmetic library — deliberately not a date-fns-jalali-style drop-in,
+since that would make the same `Date`/format call sometimes mean "the
+value stored" and sometimes "the label shown," an easy source of a
+silent Gregorian/Jalali mixup in the booking payload). Verified its
+output against known Nowruz dates (2026-03-21 → 1/1/1405, round-trip
+back to 2025-03-21) before wiring it in. `utils/jalali.js` and
+`PersianDatePicker.jsx` keep the split explicit: the underlying `Date`
+and the `yyyy-MM-dd` string sent to the backend stay Gregorian always;
+only the on-screen weekday/day/month labels go through Jalali
+conversion + a hand-written Persian weekday/month name table (there's no
+locale pack needed or used - just numeral conversion and name lookup).
+
+Hit one real bug shipping this: `jalaali-js` has no default export.
+`import jalaali from 'jalaali-js'` works fine under Node's `require()`
+(which is how a quick standalone verification script was run) but fails
+outright under Vite/Rollup's ESM build. Caught at `npm run build`, not
+left for a live-browser failure — switched to the named import
+(`import { toJalaali } from 'jalaali-js'`).
+
+Staff-booking UI: new `BookForCustomerForm.jsx`, embedded in
+`SalonOwnerDashboard`'s bookings tab and in `StylistDashboard` (which
+now also calls a new `GET /stylists/me` to learn its own salon(s) and
+pass `fixedStylistId` so a stylist booking for themselves skips the
+stylist picker entirely). Customer lookup via a new `GET /users/search`
+(staff-only — owner/stylist/admin).
+
+**Data-safety note, disclosed directly rather than glossed over:** the
+cleanup script after this round's live-testing used
+`{'$or': [{'customer_id': {'$in': user_ids}}, {'stylist_id': {'$exists': True}}]}`
+to delete test bookings. `stylist_id` is always present as a key on every
+booking document (set explicitly at creation, even when `null`), so that
+second clause matched *every* booking in the collection, not just test
+ones - confirmed by `db.bookings.count_documents({})` returning 0
+immediately after. Checked both days' full transaction logs (which have
+captured every write since before the real user's account even existed)
+before concluding anything: every booking ever created in this database
+came from throwaway `*.test.com` accounts across every testing round;
+the real account never exercised the booking flow. No real data was
+lost, verified rather than assumed - but the query itself was a real
+mistake and is not being repeated.
+
+Verified live end-to-end with throwaway accounts (cleaned up correctly
+this time, scoped only to the specific test user ids and salon/service
+names created in this round): a real customer booking without
+`customer_id` now succeeds (200) where it should always have; an owner
+calling without `customer_id` is correctly rejected with a message
+telling them to pass one; an owner booking on behalf of a customer
+succeeds and comes back `confirmed`; a stylist booking on behalf of a
+customer at their own linked salon succeeds and comes back `confirmed`;
+submitting 4 boxes is rejected with a 422 (cap is 3); staff-only customer
+search returns the right match and is 403 for a plain customer;
+`GET /stylists/me` correctly resolves a stylist's linked salon id/name.
+
+Commit: `Add Persian calendar, 3-box cap, and staff booking on behalf of
+a customer`.

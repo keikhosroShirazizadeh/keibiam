@@ -6,6 +6,7 @@ import { chairApi } from '../api/chairs';
 import { fileUrl } from '../api/axiosConfig';
 import SalonForm from '../components/SalonForm';
 import BookingList from '../components/BookingList';
+import BookForCustomerForm from '../components/BookForCustomerForm';
 import { Plus, Settings, Users, Calendar, Armchair, ImagePlus } from 'lucide-react';
 
 const TEHRAN = { lat: 35.6892, lng: 51.389 };
@@ -47,6 +48,7 @@ export default function SalonOwnerDashboard() {
   const [newChair, setNewChair] = useState({ name: '', description: '' });
 
   const [bookings, setBookings] = useState([]);
+  const [showBookForCustomer, setShowBookForCustomer] = useState(false);
 
   useEffect(() => {
     loadSalons();
@@ -590,7 +592,7 @@ export default function SalonOwnerDashboard() {
             </div>
           ) : (
             <>
-              <div className="mb-4">
+              <div className="flex items-center justify-between mb-4 gap-4">
                 {salons.length > 1 ? (
                   <select
                     value={selectedSalonId}
@@ -604,7 +606,24 @@ export default function SalonOwnerDashboard() {
                 ) : (
                   <span className="text-sm text-gray-600">{salons[0]?.name}</span>
                 )}
+                <button
+                  onClick={() => setShowBookForCustomer(!showBookForCustomer)}
+                  className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800"
+                >
+                  <Plus className="w-4 h-4" />
+                  رزرو برای مشتری
+                </button>
               </div>
+
+              {showBookForCustomer && selectedSalonId && (
+                <div className="mb-6">
+                  <BookForCustomerForm
+                    salonId={selectedSalonId}
+                    onBooked={() => { setShowBookForCustomer(false); loadBookings(selectedSalonId); }}
+                  />
+                </div>
+              )}
+
               <BookingList bookings={bookings} onStatusChange={handleBookingStatusChange} />
             </>
           )}

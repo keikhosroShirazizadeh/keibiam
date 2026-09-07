@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { format, addDays } from 'date-fns';
+import { format } from 'date-fns';
 import { salonApi } from '../api/salons';
 import { serviceApi } from '../api/services';
 import { chairApi } from '../api/chairs';
 import { stylistApi } from '../api/stylists';
 import { bookingApi } from '../api/bookings';
 import DayBoxGrid from '../components/DayBoxGrid';
+import PersianDatePicker from '../components/PersianDatePicker';
 import { MapPin } from 'lucide-react';
 
-const MAX_BOXES = 10;
+const MAX_BOXES = 3;
 
 export default function SalonDetail() {
   const { salonId } = useParams();
@@ -68,12 +69,6 @@ export default function SalonDetail() {
   const total = services
     .filter((s) => selectedServiceIds.includes(s._id))
     .reduce((sum, s) => sum + s.price, 0);
-
-  const dates = [];
-  const today = new Date();
-  for (let i = 0; i < 90; i++) {
-    dates.push(addDays(today, i));
-  }
 
   const handleSubmit = async () => {
     if (selectedServiceIds.length === 0) {
@@ -190,34 +185,14 @@ export default function SalonDetail() {
       {/* Date Selection */}
       <div className="mb-6">
         <label className="block text-sm font-medium mb-2">انتخاب تاریخ</label>
-        <div className="grid grid-cols-7 gap-2 max-h-64 overflow-y-auto border rounded-lg p-2">
-          {dates.map((day) => {
-            const dateStr = format(day, 'yyyy-MM-dd');
-            const isSelected = selectedDate === dateStr;
-            return (
-              <button
-                key={dateStr}
-                onClick={() => setSelectedDate(dateStr)}
-                className={`p-2 rounded-lg text-sm text-center transition-colors ${
-                  isSelected
-                    ? 'bg-black text-white'
-                    : 'hover:bg-gray-100 border'
-                }`}
-              >
-                <div className="text-xs">{format(day, 'EEEE')}</div>
-                <div className="font-medium">{format(day, 'd')}</div>
-                <div className="text-xs">{format(day, 'MMM')}</div>
-              </button>
-            );
-          })}
-        </div>
+        <PersianDatePicker selectedDate={selectedDate} onSelect={setSelectedDate} />
       </div>
 
       {/* Box (time-slot) selection - multi-select, click directly to reserve */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <label className="block text-sm font-medium">
-            انتخاب بازه‌های زمانی (هر بازه {salon.min_booking_interval} دقیقه) — می‌توانید چند بازه پیشنهادی انتخاب کنید
+            انتخاب بازه‌های زمانی (هر بازه {salon.min_booking_interval} دقیقه) — تا {MAX_BOXES} بازه پیشنهادی می‌توانید انتخاب کنید
           </label>
           <span className="text-xs text-gray-500">{selectedBoxes.length} از {MAX_BOXES} انتخاب شده</span>
         </div>

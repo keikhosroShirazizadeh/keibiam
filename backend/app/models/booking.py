@@ -32,16 +32,20 @@ class BookingCreate(BookingBase):
 
 
 class BulkBookingCreate(BaseModel):
-    """Customer picks multiple time boxes for the same salon/services/date;
-    each box becomes its own independent pending booking that the salon
-    owner or assigned stylist can accept or reject on its own."""
+    """A customer picks up to 3 time boxes for the same salon/services/date;
+    each box becomes its own independent booking that the salon owner or
+    assigned stylist can accept or reject on its own. Salon staff (owner/
+    stylist) can also call this on behalf of an existing customer by
+    passing customer_id - those bookings are auto-confirmed rather than
+    left pending, since staff creating one already implies acceptance."""
     salon_id: str
     service_ids: List[str]
     booking_date: date
-    start_times: List[time] = Field(..., min_length=1, max_length=10)
+    start_times: List[time] = Field(..., min_length=1, max_length=3)
     stylist_id: Optional[str] = None
     chair_id: Optional[str] = None
     notes: Optional[str] = None
+    customer_id: Optional[str] = None
 
 
 class BookingInDB(BookingBase):

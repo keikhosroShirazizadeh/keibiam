@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.dependencies.auth import get_current_active_user, require_customer, require_owner
 from app.database import db
 from app.models.booking import BookingCreate, BulkBookingCreate, BookingResponse, BookingStatus
+from app.models.user import UserRole
 from app.utils.transaction_logger import log_transaction
 from bson import ObjectId
 from datetime import date as date_type, datetime, timedelta
@@ -72,13 +73,40 @@ async def create_booking(booking: BookingCreate, current_user: dict = Depends(re
 
 
 @router.post("/bulk")
-async def create_bulk_booking(payload: BulkBookingCreate, current_user: dict = Depends(require_customer)):
-    """Create one independent pending booking per selected time box, all
-    sharing a group_id so the customer's booking list can show which boxes
-    belonged to the same request. Each box is accepted/rejected on its own."""
+async def create_bulk_booking(payload: BulkBookingCreate, current_user: dict = Depends(get_current_active_user)):
+    """Create one independent booking per selected time box (up to 3), all
+    sharing a group_id. A plain customer books for themselves and each box
+    starts pending. Salon staff (owner of this salon, or a stylist linked
+    to it) can instead pass customer_id to book on behalf of an existing
+    customer - those boxes are auto-confirmed, since staff creating the
+    booking already implies acceptance; there's no one else who needs to
+    approve it."""
     salon = await db.salons.find_one({"_id": payload.salon_id})
     if not salon:
         raise HTTPException(status_code=404, detail="Salon not found")
+
+    role = current_user["role"]
+    booked_by_staff = payload.customer_id is not None
+
+    if booked_by_staff:
+        if role == UserRole.SALON_OWNER.value:
+            if salon["owner_id"] != str(current_user["_id"]):
+                raise HTTPException(status_code=403, detail="Not your salon")
+        elif role == UserRole.STYLIST.value:
+            stylist = await db.stylists.find_one({"user_id": str(current_user["_id"])})
+            if not stylist or payload.salon_id not in stylist.get("salon_ids", []):
+                raise HTTPException(status_code=403, detail="You are not linked to this salon")
+        elif role not in (UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value):
+            raise HTTPException(status_code=403, detail="Only salon staff can book on behalf of a customer")
+
+        customer = await db.users.find_one({"_id": payload.customer_id, "role": UserRole.CUSTOMER.value})
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        customer_id = payload.customer_id
+    else:
+        if role != UserRole.CUSTOMER.value:
+            raise HTTPException(status_code=403, detail="Pass customer_id to book on behalf of someone else")
+        customer_id = str(current_user["_id"])
 
     services = await db.services.find({"_id": {"$in": payload.service_ids}}).to_list(length=len(payload.service_ids))
     if len(services) != len(payload.service_ids):
@@ -86,6 +114,7 @@ async def create_bulk_booking(payload: BulkBookingCreate, current_user: dict = D
 
     total_price = sum(s["price"] for s in services)
     box_minutes = salon.get("min_booking_interval", 15)
+    initial_status = BookingStatus.CONFIRMED.value if booked_by_staff else BookingStatus.PENDING.value
     group_id = str(ObjectId())
     now = datetime.utcnow()
     created = []
@@ -101,11 +130,11 @@ async def create_bulk_booking(payload: BulkBookingCreate, current_user: dict = D
             "booking_date": payload.booking_date.isoformat(),
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
-            "status": BookingStatus.PENDING.value,
+            "status": initial_status,
             "notes": payload.notes,
             "total_price": total_price,
             "group_id": group_id,
-            "customer_id": str(current_user["_id"]),
+            "customer_id": customer_id,
             "stylist_id": payload.stylist_id,
             "chair_id": payload.chair_id,
             "created_at": now,

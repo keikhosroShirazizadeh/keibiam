@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.dependencies.auth import require_owner
+from app.dependencies.auth import require_owner, get_current_active_user
 from app.database import db
 from app.models.stylist import StylistCreate, StylistAccountCreate, StylistResponse
 from app.models.user import UserRole
@@ -84,6 +84,20 @@ async def create_stylist_account(
     log_transaction("create", "stylists", stylist_dict["_id"], stylist_dict, actor_id=str(current_user["_id"]))
 
     return StylistResponse(**stylist_dict)
+
+
+@router.get("/me")
+async def get_my_stylist_profile(current_user: dict = Depends(get_current_active_user)):
+    """A stylist's own profile plus their linked salons resolved to
+    id/name, so a stylist can pick which salon to book a customer into
+    without needing to know salon ids."""
+    stylist = await db.stylists.find_one({"user_id": str(current_user["_id"])})
+    if not stylist:
+        raise HTTPException(status_code=404, detail="No stylist profile")
+
+    salons = await db.salons.find({"_id": {"$in": stylist.get("salon_ids", [])}}).to_list(length=50)
+    stylist["salons"] = [{"id": s["_id"], "name": s["name"]} for s in salons]
+    return stylist
 
 
 @router.get("/salon/{salon_id}")
