@@ -36,6 +36,7 @@ export default function SalonOwnerDashboard() {
     full_name: '',
     email: '',
     phone: '',
+    national_code: '',
     password: '',
     bio: '',
   });
@@ -411,6 +412,13 @@ export default function SalonOwnerDashboard() {
                       onChange={(e) => setNewStylist({ ...newStylist, phone: e.target.value })}
                       className="px-4 py-2 border rounded-lg"
                       required
+                    />
+                    <input
+                      type="text"
+                      placeholder="کد ملی (اختیاری)"
+                      value={newStylist.national_code}
+                      onChange={(e) => setNewStylist({ ...newStylist, national_code: e.target.value })}
+                      className="px-4 py-2 border rounded-lg"
                     />
                     <input
                       type="password"

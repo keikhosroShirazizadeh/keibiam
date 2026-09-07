@@ -16,6 +16,7 @@ class UserBase(BaseModel):
     email: EmailStr
     phone: str
     full_name: str
+    national_code: Optional[str] = None
     role: UserRole = UserRole.CUSTOMER
     is_active: bool = True
     avatar_url: Optional[str] = None
@@ -23,6 +24,11 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=6)
+
+
+class UserSelfUpdate(BaseModel):
+    full_name: Optional[str] = None
+    national_code: Optional[str] = None
 
 
 class UserInDB(UserBase):

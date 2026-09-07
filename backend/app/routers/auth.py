@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from app.database import db
 from app.config import settings
 from app.dependencies.auth import get_current_active_user
-from app.models.user import UserCreate, UserResponse, UserRole
+from app.models.user import UserCreate, UserResponse, UserRole, UserSelfUpdate
 from app.utils.security import verify_password, get_password_hash
 from app.utils.transaction_logger import log_transaction
 from app.utils.file_storage import save_image
@@ -62,6 +62,20 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_active_user)):
     return UserResponse(**current_user)
+
+
+@router.put("/me", response_model=UserResponse)
+async def update_me(
+    payload: UserSelfUpdate,
+    current_user: dict = Depends(get_current_active_user),
+):
+    update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if update_data:
+        update_data["updated_at"] = datetime.utcnow()
+        await db.users.update_one({"_id": current_user["_id"]}, {"$set": update_data})
+        log_transaction("update", "users", current_user["_id"], update_data, actor_id=str(current_user["_id"]))
+    updated = await db.users.find_one({"_id": current_user["_id"]})
+    return UserResponse(**updated)
 
 
 @router.post("/me/avatar", response_model=UserResponse)

@@ -1,6 +1,6 @@
 # Project Handoff — Salon Booking System
 
-Status snapshot as of 2026-09-06. This document exists to bring a new
+Status snapshot as of 2026-09-07. This document exists to bring a new
 contributor (or a future session) up to speed on what exists, what changed
 and why, and where to start. The app is runnable end-to-end (register →
 create salon → admin approval → create service → owner adds a barber →
@@ -44,7 +44,7 @@ anywhere near production.
 
 | Model | Key fields | Notes |
 |---|---|---|
-| `User` | email, phone, role, is_active, avatar_url | email/phone unique-indexed |
+| `User` | email, phone, full_name, national_code (optional), role, is_active, avatar_url | email/phone unique-indexed; `national_code` is free-text, not validated as a real Iranian national ID, and only used for admin search |
 | `Salon` | name, address, geo `location` (2dsphere), status, management_mode, is_visible, booking window config | status workflow: `pending → active/inactive/rejected` |
 | `Stylist` | bio, specialties, salon_ids (many-to-many), `WorkSchedule[]` | per-day working hours + optional break window |
 | `Chair` | name, service_ids, is_active | belongs to one salon |
@@ -57,13 +57,22 @@ that's the convention the frontend expects throughout.
 
 ## Backend routes (`backend/app/routers/`)
 
-- `auth.py` — `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
+- `auth.py` — `POST /auth/register`, `POST /auth/login`, `GET /auth/me`,
+  `PUT /auth/me` (self-update `full_name`/`national_code` — the only
+  fields a user can change about themselves besides their avatar; email/
+  phone are left alone since they're login identifiers and unique-indexed)
 - `salons.py` — create (owner), list (public; `status` filter for
   admin/owner views, defaults to active+visible), `GET /salons/mine`
   (owner; every salon they own, any status), get one, update (owner),
   `POST /salons/{id}/images` (owner; appends a photo to the gallery)
 - `admin.py` — `PUT /admin/salons/{id}/status` — approve/reject/toggle
-  visibility (admin/super_admin)
+  visibility (admin/super_admin); `GET /admin/users?role=&search=`
+  (admin-only; `role` required, `search` is a case-insensitive substring
+  match against full_name/phone/national_code) and
+  `GET /admin/users/{user_id}` (admin-only; the user plus role-specific
+  detail — `salons` for a salon_owner regardless of status, or
+  `stylist_profile` for a stylist with their linked salons resolved to
+  names — see Development history Round 9)
 - `services.py` — `POST /services/salon/{salon_id}` (owner), list by salon
   (public), update/soft-delete (owner)
 - `chairs.py` — `POST /chairs/salon/{salon_id}` (owner), list by salon
@@ -158,24 +167,26 @@ required).
 ## Frontend (`frontend/src/`)
 
 - `App.jsx` — router; `/`, `/login`, `/register`, `/salon/:salonId`,
-  `/salon/:salonId/book`, `/admin`, `/owner-dashboard`,
-  `/stylist-dashboard`, `/profile` (last four are role-gated — `/profile`
-  just requires being logged in, any role — via a `ProtectedRoute` wrapper)
+  `/admin`, `/owner-dashboard`, `/stylist-dashboard`, `/profile` (last
+  four are role-gated — `/profile` just requires being logged in, any
+  role — via a `ProtectedRoute` wrapper). There is no separate booking
+  route any more — see Round 9.
 - `store/authStore.js` — zustand store, persisted to localStorage:
   `token`, `user`, `isAuthenticated`, `login()`, `logout()`, `setUser()`
-  (used after an avatar upload to refresh the stored user without a full
-  re-login), and `isSuperAdmin()/isAdmin()/isSalonOwner()/isStylist()/
-  isCustomer()` role checks
+  (used after an avatar upload or profile edit to refresh the stored user
+  without a full re-login), and `isSuperAdmin()/isAdmin()/isSalonOwner()/
+  isStylist()/isCustomer()` role checks
 - `api/` — `axiosConfig.js` (injects the bearer token, logs out on 401,
   exports `fileUrl()` to resolve `/uploads/...` paths against the backend
   origin), `salons.js`, `bookings.js`, `services.js`, `stylists.js`,
-  `chairs.js`, `profile.js`
-- `components/DayBoxGrid.jsx` — shared read-only/interactive day view:
-  renders one day (08:00–24:00, hardcoded range) divided into
-  `boxMinutes`-sized boxes, with busy boxes struck through and
-  unselectable. Exports `buildDayBoxes(boxMinutes)` too. Read-only preview
-  when `onToggle` is omitted (`SalonDetail`); interactive multi-select
-  when provided (`BookingPage`).
+  `chairs.js`, `profile.js` (`update()` for self-update, `uploadAvatar()`),
+  `admin.js` (`listUsers(role, search)`, `getUserDetail(userId)`)
+- `components/DayBoxGrid.jsx` — renders one day (08:00–24:00, hardcoded
+  range) divided into `boxMinutes`-sized boxes, multi-select, busy boxes
+  struck through and unselectable. Exports `buildDayBoxes(boxMinutes)`
+  too. Used only by `SalonDetail` now (see Round 9 — it used to also have
+  a read-only preview mode for a separate page; that mode no longer
+  exists since there's only one page now).
 - `components/SalonForm.jsx` — the salon field set (name/address/phone/
   management_mode/min_booking_interval/description/map location), shared
   by `SalonOwnerDashboard`'s create-salon form and its per-card edit form
@@ -188,22 +199,27 @@ required).
   buttons (pending → confirm/reject, confirmed → complete/cancel,
   cancel_requested → confirm the cancellation), calling back with
   `onStatusChange(bookingId, newStatus)`
-- **Pages**: `Home` (salon browse grid), `SalonDetail` (shows a
-  `DayBoxGrid` preview of today the moment the salon loads, using
-  `GET .../availability` so it reflects real confirmed bookings, not just
-  a decorative grid; then service picker → hands off to booking),
-  `BookingPage` (interactive `DayBoxGrid`, busy boxes disabled, refetches
-  availability whenever the selected date changes; optional chair/stylist
-  pick per the salon's management mode; submits via `POST /bookings/bulk`
-  — see Booking model above), `Login`, `Register`, `Profile` (avatar
-  upload, any logged-in user), `AdminPanel` (salon approval queue,
-  approve/reject wired to the real admin endpoint), `SalonOwnerDashboard`
-  (create salons via `SalonForm`; each card's "ویرایش" button now opens
-  that same `SalonForm` inline, pre-filled, submitting to
-  `PUT /salons/{id}` — the strategy, including `min_booking_interval`, is
-  editable after creation; photo gallery with upload button; real
-  "add a barber" form + stylist list on the stylists tab; "Chairs" tab;
-  "bookings" tab a real `BookingList` per salon), `StylistDashboard`
+- **Pages**: `Home` (salon browse grid), `SalonDetail` (everything a
+  customer needs to book, on one page: service checkboxes, optional
+  chair/stylist pick per the salon's management mode, date picker, an
+  interactive `DayBoxGrid` sized by `min_booking_interval` with real busy
+  boxes disabled — refetches `GET .../availability` whenever the date
+  changes — notes, submit via `POST /bookings/bulk`; see Round 9 for why
+  this used to be two pages), `Login`, `Register` (now also collects an
+  optional `national_code`), `Profile` (avatar upload plus an editable
+  full_name/national_code form, via `PUT /auth/me`), `AdminPanel` (two
+  top-level tabs: "آرایشگاه‌ها" — the original salon approval queue,
+  unchanged — and "کاربران", new in Round 9: role tabs
+  salon_owner/stylist/customer, a debounced name/phone/national_code
+  search, and a detail panel that shows a salon_owner's salons with
+  activate/deactivate wired to the same admin endpoint, or a stylist's
+  bio/specialties/linked salons), `SalonOwnerDashboard` (create salons
+  via `SalonForm`; each card's "ویرایش" button opens that same form
+  inline, pre-filled, submitting to `PUT /salons/{id}` — the strategy,
+  including `min_booking_interval`, is editable after creation; photo
+  gallery with upload button; real "add a barber" form (now also
+  collects `national_code`) + stylist list on the stylists tab; "Chairs"
+  tab; "bookings" tab a real `BookingList` per salon), `StylistDashboard`
   (a real `BookingList` of bookings assigned to that stylist, via
   `GET /bookings/stylist/me`)
 
@@ -226,9 +242,9 @@ Not blockers to running the app, but real gaps to close next:
   constants, not a per-salon setting. A salon that's actually only open
   10–18 still shows the full 08:00–24:00 grid.
 - **No chair-based booking *conflict* UI for customers** — chair
-  *management* exists (owner dashboard's "Chairs" tab), and `BookingPage`
-  now lets a customer optionally pick a chair/stylist, but availability
-  is tracked per salon+date only, not per chair or per stylist — two
+  *management* exists (owner dashboard's "Chairs" tab), and `SalonDetail`
+  lets a customer optionally pick a chair/stylist, but availability is
+  tracked per salon+date only, not per chair or per stylist — two
   customers could each get a box confirmed for the same time at the same
   salon on different chairs and neither would see the other as busy.
 - **`StylistDashboard`** still has no working-schedule management (only a
@@ -238,6 +254,14 @@ Not blockers to running the app, but real gaps to close next:
   salon's gallery or set a chair's photo, but there's no UI (or endpoint)
   to remove one. Editing the salon's own fields (name/address/strategy/
   location) now works; photos are still append-only.
+- **`national_code` is unvalidated free text**, not checked against the
+  real Iranian national-ID checksum algorithm, and not required at
+  registration — added purely as an admin search field per Round 9's
+  request. Two different users could enter the same value, or nonsense.
+- **Customer profile view in the admin panel is bare-bones** — name,
+  email, phone, national code, active status. No booking history, no way
+  to deactivate a customer account (only salons have an activate/
+  deactivate action right now).
 
 ## Running locally
 
@@ -558,3 +582,56 @@ box) show up in `busy_times`; edited a salon's name and interval via
 `PUT /salons/{id}` and confirmed both took effect on refetch.
 
 Commit: `Add day-grid availability preview and salon editing`.
+
+### Round 9 — booking still unclickable; admin user browser by role
+Reported again: "customer cannot clicked on a specific time to make
+reservation." Diagnosis this time: Round 8 had built two separate grids —
+a **read-only** preview on `SalonDetail` (the first thing a customer
+sees when they open a salon) and a **separate interactive** grid on
+`BookingPage`, reachable only after checking services and clicking
+"continue." A customer naturally tries clicking the first grid they see
+— which, by design, did nothing. That's on this project, not a
+misunderstanding: splitting one action across two pages/grids, only one
+of which worked, was the bug. Fixed by merging `BookingPage`'s entire
+flow (chair/stylist pick, date picker, notes, submit) into `SalonDetail`
+itself, so the only grid a customer ever sees is the one they can act
+on. `BookingPage.jsx` and its route are gone; `DayBoxGrid` lost its
+now-unreachable read-only mode along with them (was never used from
+anywhere else).
+
+Also requested: an admin panel to browse users by role (salon owner /
+stylist / customer) with search by phone, national code, or name, and
+click-through to a role-specific detail — a salon owner's salons
+(with activate/deactivate), a stylist's profile, a customer's profile.
+`national_code` didn't exist anywhere in the schema before this — added
+to `User` (optional, unvalidated free text — see Known gaps), exposed in
+`Register` and the owner's "add a barber" form, and made editable after
+the fact via a new `PUT /auth/me` (previously there was no way for a
+user to change anything about their own profile except the avatar).
+
+Backend: `GET /admin/users?role=&search=` (role required, `search` a
+case-insensitive substring match across full_name/phone/national_code)
+and `GET /admin/users/{user_id}` (the user, plus — depending on role —
+every salon they own regardless of status, or their stylist profile with
+linked salon ids resolved to names).
+
+Frontend: `AdminPanel` restructured into two top-level tabs — the
+original salon-approval table (unchanged, renamed "آرایشگاه‌ها") and a
+new "کاربران" tab with role tabs, a debounced search box, a result list,
+and a detail panel. Activating/deactivating a salon from inside the
+owner's detail view calls the exact same endpoint as the original salon
+table (factored the status-badge and action-buttons markup into two tiny
+local components, `SalonStatusBadge`/`SalonStatusActions`, used in both
+places so they can't drift apart).
+
+Verified live against the real dev database with throwaway accounts
+(cleaned up after): searched by name, by phone-number substring, and by
+national_code, each returning the right single match; opened a salon
+owner's detail and saw their salon in `pending`, activated it from that
+exact view, and confirmed the change stuck on refetch; opened a
+stylist's detail and saw bio/specialties/linked salon name resolved
+correctly; opened a customer's detail and saw their basic profile; ran
+the merged `SalonDetail` booking flow end-to-end with the exact payload
+the new single-page UI builds.
+
+Commit: `Merge booking flow into SalonDetail; add admin user browser`.

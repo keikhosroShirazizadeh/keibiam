@@ -4,7 +4,6 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import SalonDetail from './pages/SalonDetail';
-import BookingPage from './pages/BookingPage';
 import AdminPanel from './pages/AdminPanel';
 import SalonOwnerDashboard from './pages/SalonOwnerDashboard';
 import StylistDashboard from './pages/StylistDashboard';
@@ -27,7 +26,6 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/salon/:salonId" element={<SalonDetail />} />
-          <Route path="/salon/:salonId/book" element={<BookingPage />} />
           <Route
             path="/admin"
             element={

@@ -11,12 +11,7 @@ export function buildDayBoxes(boxMinutes) {
   return boxes;
 }
 
-/**
- * Renders one day divided into boxes of `boxMinutes` from 08:00 to 24:00.
- * Read-only preview when `onToggle` is omitted (SalonDetail); interactive
- * multi-select when provided (BookingPage). Busy boxes are never
- * selectable in either mode.
- */
+/** One day divided into boxes of `boxMinutes` from 08:00 to 24:00, multi-select. Busy boxes are never selectable. */
 export default function DayBoxGrid({ boxMinutes, busyTimes = [], selected = [], onToggle }) {
   const boxes = buildDayBoxes(boxMinutes);
   const busySet = new Set(busyTimes.map((t) => t.slice(0, 5)));
@@ -32,18 +27,16 @@ export default function DayBoxGrid({ boxMinutes, busyTimes = [], selected = [], 
           classes += 'bg-gray-100 text-gray-400 border-gray-100 cursor-not-allowed line-through';
         } else if (isSelected) {
           classes += 'bg-black text-white border-black';
-        } else if (onToggle) {
-          classes += 'hover:border-gray-400 cursor-pointer';
         } else {
-          classes += 'text-gray-600';
+          classes += 'hover:border-gray-400 cursor-pointer';
         }
 
         return (
           <button
             key={time}
             type="button"
-            disabled={isBusy || !onToggle}
-            onClick={() => onToggle?.(time)}
+            disabled={isBusy}
+            onClick={() => onToggle(time)}
             className={classes}
           >
             {time}

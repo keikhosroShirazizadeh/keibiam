@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import api from '../api/axiosConfig';
-import { UserPlus, Mail, Lock, User, Phone } from 'lucide-react';
+import { UserPlus, Mail, Lock, User, Phone, Fingerprint } from 'lucide-react';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -11,6 +11,7 @@ export default function Register() {
     full_name: '',
     email: '',
     phone: '',
+    national_code: '',
     password: '',
     role: 'customer',
   });
@@ -98,6 +99,21 @@ export default function Register() {
               className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
               placeholder="0912XXXXXXX"
               required
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">کد ملی (اختیاری)</label>
+          <div className="relative">
+            <Fingerprint className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              name="national_code"
+              value={form.national_code}
+              onChange={handleChange}
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+              placeholder="۱۰ رقم"
             />
           </div>
         </div>

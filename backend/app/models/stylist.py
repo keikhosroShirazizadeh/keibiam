@@ -41,6 +41,7 @@ class StylistAccountCreate(StylistBase):
     full_name: str
     email: EmailStr
     phone: str
+    national_code: Optional[str] = None
     password: str = Field(..., min_length=6)
 
 

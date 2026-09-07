@@ -57,6 +57,7 @@ async def create_stylist_account(
         "email": payload.email,
         "phone": payload.phone,
         "full_name": payload.full_name,
+        "national_code": payload.national_code,
         "role": UserRole.STYLIST.value,
         "is_active": True,
         "avatar_url": None,
