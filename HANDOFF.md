@@ -757,3 +757,28 @@ search returns the right match and is 403 for a plain customer;
 
 Commit: `Add Persian calendar, 3-box cap, and staff booking on behalf of
 a customer`.
+
+### Round 11 — submit button silently disabled, no explanation
+Reported: clicking a time box, then the submit button, did nothing - and
+hovering it showed a "blocked" cursor. That's the browser's default
+styling for a disabled `<button>`.
+
+Root cause: `SalonDetail.jsx`'s submit button was
+`disabled={loading || selectedServiceIds.length === 0 || selectedBoxes.length === 0}`.
+`handleSubmit` already had the right validation - `setError('لطفاً حداقل
+یک سرویس انتخاب کنید')` etc. - but that code could never run, because a
+disabled button never fires `onClick` at all. A customer who clicked a
+time box before checking a service checkbox got a permanently
+not-allowed cursor with zero explanation, indistinguishable from a
+broken button.
+
+Fix: the button now only disables on `loading`; the existing validation
+inside `handleSubmit` runs on every click and surfaces the right message
+in the error banner instead of being unreachable dead code. Checked every
+other `disabled={...}` in the frontend for the same pattern (grepped all
+of `frontend/src`) - `BookForCustomerForm`, `Login`, `Register`, `Profile`
+already only gate on their own loading flags; `DayBoxGrid`'s
+`disabled={isBusy}` is legitimate (a confirmed-busy box is visually
+struck through, so there's nothing to explain).
+
+Commit: `Stop disabling the booking submit button on unmet selections`.

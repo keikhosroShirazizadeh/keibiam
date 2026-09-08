@@ -222,7 +222,7 @@ export default function SalonDetail() {
       {/* Submit */}
       <button
         onClick={handleSubmit}
-        disabled={loading || selectedServiceIds.length === 0 || selectedBoxes.length === 0}
+        disabled={loading}
         className="w-full py-3 bg-black text-white rounded-lg font-medium disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-gray-800 transition-colors"
       >
         {loading ? 'در حال ارسال...' : `ارسال ${selectedBoxes.length || ''} درخواست رزرو`.trim()}
