@@ -3,11 +3,22 @@ import { salonApi } from '../api/salons';
 import { bookingApi } from '../api/bookings';
 import { stylistApi } from '../api/stylists';
 import { chairApi } from '../api/chairs';
+import { serviceApi } from '../api/services';
 import { fileUrl } from '../api/axiosConfig';
 import SalonForm from '../components/SalonForm';
 import BookingList from '../components/BookingList';
 import BookForCustomerForm from '../components/BookForCustomerForm';
-import { Plus, Settings, Users, Calendar, Armchair, ImagePlus } from 'lucide-react';
+import { Plus, Settings, Users, Calendar, Armchair, ImagePlus, Scissors } from 'lucide-react';
+
+const SERVICE_TYPES = [
+  { value: 'haircut', label: 'اصلاح مو' },
+  { value: 'shave', label: 'اصلاح ریش' },
+  { value: 'manicure', label: 'مانیکور' },
+  { value: 'pedicure', label: 'پدیکور' },
+  { value: 'coloring', label: 'رنگ مو' },
+  { value: 'treatment', label: 'درمان مو' },
+  { value: 'other', label: 'سایر' },
+];
 
 const TEHRAN = { lat: 35.6892, lng: 51.389 };
 
@@ -47,6 +58,18 @@ export default function SalonOwnerDashboard() {
   const [chairError, setChairError] = useState('');
   const [newChair, setNewChair] = useState({ name: '', description: '' });
 
+  const [services, setServices] = useState([]);
+  const [showAddServiceForm, setShowAddServiceForm] = useState(false);
+  const [serviceError, setServiceError] = useState('');
+  const [newService, setNewService] = useState({
+    name: '',
+    type: 'haircut',
+    description: '',
+    duration_minutes: 30,
+    ingredients: '',
+    price: '',
+  });
+
   const [bookings, setBookings] = useState([]);
   const [showBookForCustomer, setShowBookForCustomer] = useState(false);
 
@@ -69,6 +92,9 @@ export default function SalonOwnerDashboard() {
     }
     if (activeTab === 'bookings' && selectedSalonId) {
       loadBookings(selectedSalonId);
+    }
+    if (activeTab === 'services' && selectedSalonId) {
+      loadServices(selectedSalonId);
     }
   }, [activeTab, selectedSalonId]);
 
@@ -96,6 +122,38 @@ export default function SalonOwnerDashboard() {
       setChairs(res.data);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const loadServices = async (salonId) => {
+    try {
+      const res = await serviceApi.getBySalon(salonId);
+      setServices(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCreateService = async (e) => {
+    e.preventDefault();
+    setServiceError('');
+    try {
+      await serviceApi.create(selectedSalonId, {
+        name: newService.name,
+        type: newService.type,
+        description: newService.description || undefined,
+        duration_minutes: Number(newService.duration_minutes),
+        ingredients: newService.ingredients
+          .split(',')
+          .map((i) => i.trim())
+          .filter(Boolean),
+        price: Number(newService.price),
+      });
+      setShowAddServiceForm(false);
+      setNewService({ name: '', type: 'haircut', description: '', duration_minutes: 30, ingredients: '', price: '' });
+      loadServices(selectedSalonId);
+    } catch (err) {
+      setServiceError(err.response?.data?.detail || 'خطا در ثبت سرویس');
     }
   };
 
@@ -251,6 +309,7 @@ export default function SalonOwnerDashboard() {
       <div className="flex gap-4 border-b mb-6">
         {[
           { id: 'salons', label: 'آرایشگاه‌ها', icon: Settings },
+          { id: 'services', label: 'سرویس‌ها', icon: Scissors },
           { id: 'stylists', label: 'آرایشگرها', icon: Users },
           { id: 'chairs', label: 'صندلی‌ها', icon: Armchair },
           { id: 'bookings', label: 'نوبت‌ها', icon: Calendar },
@@ -345,6 +404,141 @@ export default function SalonOwnerDashboard() {
             <div className="col-span-2 text-center py-12 text-gray-500">
               هنوز آرایشگاهی ثبت نکرده‌اید
             </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'services' && (
+        <div>
+          {salons.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              ابتدا یک آرایشگاه ثبت کنید
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-4 gap-4">
+                {salons.length > 1 ? (
+                  <select
+                    value={selectedSalonId}
+                    onChange={(e) => setSelectedSalonId(e.target.value)}
+                    className="px-4 py-2 border rounded-lg"
+                  >
+                    {salons.map((s) => (
+                      <option key={s._id} value={s._id}>{s.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-sm text-gray-600">{salons[0]?.name}</span>
+                )}
+                <button
+                  onClick={() => setShowAddServiceForm(!showAddServiceForm)}
+                  className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800"
+                >
+                  <Plus className="w-4 h-4" />
+                  سرویس جدید
+                </button>
+              </div>
+
+              {showAddServiceForm && (
+                <div className="border rounded-xl p-6 mb-6 bg-gray-50">
+                  <h2 className="text-lg font-medium mb-4">افزودن سرویس</h2>
+
+                  {serviceError && (
+                    <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg border border-red-200 text-sm">
+                      {serviceError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleCreateService} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      placeholder="نام سرویس (مثلا: کوتاهی ساده)"
+                      value={newService.name}
+                      onChange={(e) => setNewService({ ...newService, name: e.target.value })}
+                      className="px-4 py-2 border rounded-lg"
+                      required
+                    />
+                    <select
+                      value={newService.type}
+                      onChange={(e) => setNewService({ ...newService, type: e.target.value })}
+                      className="px-4 py-2 border rounded-lg"
+                    >
+                      {SERVICE_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      placeholder="زمان تقریبی (دقیقه)"
+                      value={newService.duration_minutes}
+                      onChange={(e) => setNewService({ ...newService, duration_minutes: e.target.value })}
+                      className="px-4 py-2 border rounded-lg"
+                      min={15}
+                      max={300}
+                      required
+                    />
+                    <input
+                      type="number"
+                      placeholder="قیمت (تومان)"
+                      value={newService.price}
+                      onChange={(e) => setNewService({ ...newService, price: e.target.value })}
+                      className="px-4 py-2 border rounded-lg"
+                      min={0}
+                      required
+                    />
+                    <textarea
+                      placeholder="توضیح کوتاه (مثلا: فقط کوتاه کردن مو، بدون شست‌وشو)"
+                      value={newService.description}
+                      onChange={(e) => setNewService({ ...newService, description: e.target.value })}
+                      className="px-4 py-2 border rounded-lg md:col-span-2 resize-none"
+                      rows={2}
+                    />
+                    <input
+                      type="text"
+                      placeholder="مواد مصرفی، با ویرگول جدا کنید (مثلا: ژل، واکس)"
+                      value={newService.ingredients}
+                      onChange={(e) => setNewService({ ...newService, ingredients: e.target.value })}
+                      className="px-4 py-2 border rounded-lg md:col-span-2"
+                    />
+                    <div className="md:col-span-2 flex gap-2">
+                      <button type="submit" className="px-4 py-2 bg-black text-white rounded-lg">
+                        ثبت
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddServiceForm(false)}
+                        className="px-4 py-2 border rounded-lg hover:bg-gray-100"
+                      >
+                        انصراف
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {services.map((service) => (
+                  <div key={service._id} className="border rounded-xl p-4">
+                    <div className="flex justify-between items-start mb-1">
+                      <h3 className="font-medium">{service.name}</h3>
+                      <span className="text-sm font-medium">{service.price?.toLocaleString()} تومان</span>
+                    </div>
+                    {service.description && (
+                      <p className="text-sm text-gray-500 mb-1">{service.description}</p>
+                    )}
+                    <p className="text-xs text-gray-400 mb-1">زمان تقریبی: {service.duration_minutes} دقیقه</p>
+                    {service.ingredients?.length > 0 && (
+                      <p className="text-xs text-gray-400">مواد مصرفی: {service.ingredients.join('، ')}</p>
+                    )}
+                  </div>
+                ))}
+                {services.length === 0 && (
+                  <div className="col-span-2 text-center py-12 text-gray-500">
+                    هنوز سرویسی برای این آرایشگاه ثبت نشده
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}

@@ -48,7 +48,7 @@ anywhere near production.
 | `Salon` | name, address, geo `location` (2dsphere), status, management_mode, is_visible, booking window config | status workflow: `pending → active/inactive/rejected` |
 | `Stylist` | bio, specialties, salon_ids (many-to-many), `WorkSchedule[]` | per-day working hours + optional break window |
 | `Chair` | name, service_ids, is_active | belongs to one salon |
-| `Service` | type enum (haircut/shave/manicure/pedicure/coloring/treatment/other), duration_minutes, price | belongs to one salon |
+| `Service` | type enum (haircut/shave/manicure/pedicure/coloring/treatment/other), description (short explanation), duration_minutes (estimate), ingredients (list of strings), price | belongs to one salon |
 | `Booking` | salon_id, service_ids, booking_date, start/end time, status, customer_id, optional stylist_id/chair_id | status workflow: `pending → confirmed/rejected`, `cancel_requested`, `cancelled_by_customer/stylist`, `completed` |
 
 All `*Response` models alias their `id` field to Mongo's `_id` (with
@@ -257,7 +257,12 @@ required).
   salons via `SalonForm`; each card's "ویرایش" button opens that same
   form inline, pre-filled, submitting to `PUT /salons/{id}` — the
   strategy, including `min_booking_interval`, is editable after
-  creation; photo gallery with upload button; real "add a barber" form
+  creation; photo gallery with upload button; "Services" tab, new in
+  Round 12 - name/type/price/duration plus a short description and a
+  comma-separated ingredients list, split into an array client-side
+  before posting (there was previously no service-management UI at all -
+  every service anywhere in this project up to that point had been
+  created directly via the API in testing); real "add a barber" form
   (now also collects `national_code`) + stylist list on the stylists
   tab; "Chairs" tab; "bookings" tab has a real `BookingList` per salon
   plus, new in Round 10, a "رزرو برای مشتری" button that opens
@@ -782,3 +787,42 @@ already only gate on their own loading flags; `DayBoxGrid`'s
 struck through, so there's nothing to explain).
 
 Commit: `Stop disabling the booking submit button on unmet selections`.
+
+### Round 12 — service creation UI (name, description, duration, ingredients)
+Requested: salon owner should be able to create a service with a short
+description, an estimated duration, and a list of ingredients used
+(e.g. "simple haircut: nothing, just cutting"; "styled haircut: cutting +
+gel/wax, ~1 hour"). Checking first, found there was no service-management
+UI anywhere in the app - every `Service` document created so far, in any
+round's testing, had gone in directly via the API. `description` and
+`duration_minutes` already existed on the model; only `ingredients` was
+missing.
+
+- `models/service.py`: added `ingredients: List[str] = []` to
+  `ServiceBase` (flows through to `ServiceCreate`/`ServiceResponse`
+  automatically since they inherit it - no router changes needed).
+- New "Services" tab in `SalonOwnerDashboard`, mirroring the existing
+  Chairs/Stylists tab pattern: salon selector, create-service form
+  (name, type, price, duration, description, and an ingredients field -
+  a single comma-separated text input split into an array client-side
+  before posting, rather than a tag-picker component, since the form set
+  was already large enough), and a list of existing services showing all
+  of it back.
+
+Verified live: created two services matching the request's own examples
+(a plain haircut with empty ingredients, and a styled haircut with
+description + duration_minutes=60 + ingredients=[gel, wax]) and confirmed
+both round-tripped through the API correctly.
+
+Aside, for future reference rather than a code change: initially tested
+with Persian text passed inline as bash command-line arguments, which
+this sandboxed shell mangles into literal `?` replacement characters
+before curl even sees them (confirmed via raw codepoint inspection - not
+just a terminal display issue). Re-tested by writing the JSON payload to
+a file first and using `curl --data-binary @file`, which round-tripped
+the Persian text with correct Unicode codepoints throughout - the
+backend/MongoDB pipeline itself handles UTF-8 correctly. Use a file
+payload for any future testing that includes Persian text.
+
+Commit: `Add service creation UI with description, duration, and
+ingredients`.

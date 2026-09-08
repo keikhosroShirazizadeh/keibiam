@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from enum import Enum
 
 
@@ -19,6 +19,7 @@ class ServiceBase(BaseModel):
     type: ServiceType
     description: Optional[str] = None
     duration_minutes: int = Field(..., ge=15, le=300)
+    ingredients: List[str] = []
     price: float = Field(..., ge=0)
     image_url: Optional[str] = None
     is_active: bool = True
